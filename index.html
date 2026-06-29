@@ -98,7 +98,6 @@
 
     <div class="main-layout">
         <div id="cy"></div>
-        
         <div class="details-panel" id="details">
             <h2>상세 정보 창</h2>
             <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
@@ -110,7 +109,6 @@
     let cyInstance = null;
     let nodeLabels = new Set();
 
-    // 1. 파일 로드 및 원본 데이터 기반 자바스크립트 그래프 모델 동적 생성
     async function initializeGraphSystem() {
         updateStatus("서버로부터 CSV 데이터를 불러오는 중...");
         try {
@@ -133,7 +131,6 @@
                 }
             }
 
-            // 언급 이력 데이터 파싱
             mentionData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -157,7 +154,6 @@
                 }
             });
 
-            // 독서 이력 데이터 파싱
             readingData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -196,7 +192,8 @@
                             'background-color': '#64748b',
                             'width': '65px', 'height': '65px',
                             'text-wrap': 'wrap', 'text-max-width': '60px',
-                            'transition-property': 'opacity', 'transition-duration': '0.2s'
+                            'transition-property': 'opacity', 'transition-duration': '0.1s',
+                            'z-index': 100 /* 기본 노드 레이어 높음 */
                         }
                     },
                     {
@@ -210,7 +207,7 @@
                     {
                         selector: 'edge',
                         style: {
-                            'width': 2,
+                            'width': 3, /* 선 두께를 소폭 늘려 마우스 조준 범위 최적화 */
                             'line-color': '#cbd5e1',
                             'target-arrow-color': '#cbd5e1',
                             'target-arrow-shape': 'triangle',
@@ -219,7 +216,19 @@
                             'font-size': '9px',
                             'color': '#475569',
                             'text-rotation': 'autorotate',
-                            'transition-property': 'opacity', 'transition-duration': '0.2s'
+                            'transition-property': 'opacity', 'transition-duration': '0.1s',
+                            'z-index': 50 /* 기본 엣지 레이어 중간 */
+                        }
+                    },
+                    /* 하이라이트/포커스 상태의 노드 및 엣지 세트 */
+                    {
+                        selector: '.focused',
+                        style: {
+                            'z-index': 9999,      /* ★ 중요: 검색 활성화된 요소들을 화면 최상단으로 끌어올림 */
+                            'opacity': 1,
+                            'line-opacity': 1,
+                            'text-opacity': 1,
+                            'pointer-events': 'auto'
                         }
                     },
                     {
@@ -230,18 +239,20 @@
                             'target-arrow-color': '#e11d48',
                             'color': '#ffffff',
                             'font-weight': 'bold',
-                            'width': '75px', 'height': '75px'
+                            'width': '75px', 'height': '75px',
+                            'z-index': 10000      /* 클릭 선택된 요소는 우주 최상단 배정 */
                         }
                     },
-                    /* 개체 필터링 시 투명화 및 히트박스(클릭 영역) 간섭 차단 처리 */
+                    /* 배경화되어 숨겨진 비선택 요소 제어 규칙 */
                     {
                         selector: '.faded',
                         style: {
-                            'opacity': 0.02,
+                            'opacity': 0,           /* 완전히 투명화하여 시각적 간섭 제거 */
                             'text-opacity': 0,
                             'background-opacity': 0,
-                            'line-opacity': 0.02,
-                            'pointer-events': 'none' /* 투명화된 요소는 마우스 이벤트를 무시하고 관통시킵니다 */
+                            'line-opacity': 0,
+                            'z-index': 1,           /* ★ 중요: 투명해진 노드는 레이어를 바닥 바닥(1)으로 내림 */
+                            'pointer-events': 'none' /* 마우스 클릭 이벤트를 원천 차단하여 완전 통과시킴 */
                         }
                     }
                 ],
@@ -252,7 +263,7 @@
                 showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (API 없이 로컬 검색 가능)`);
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (레이어 겹침 간섭 수정)`);
 
         } catch (error) {
             updateStatus(`오류 발생: ${error.message}`);
@@ -260,7 +271,7 @@
         }
     }
 
-    // API 연결 없는 로컬 필터링 검색 엔진
+    // 로컬 필터링 검색 엔진 (동적 클래스 토글 방식 고도화)
     function executeLocalSearch() {
         const keyword = document.getElementById('localKeyword').value.trim();
         if (!keyword) {
@@ -272,29 +283,28 @@
 
         updateStatus(`'${keyword}' 관련 네트워크 추출 중...`);
 
-        // 1. 키워드를 포함하는 노드 탐색
         const matchedNodes = cyInstance.nodes().filter(node => {
             return node.data('label').toLowerCase().includes(keyword.toLowerCase());
         });
 
         if (matchedNodes.length === 0) {
             updateStatus(`'${keyword}'에 매칭되는 노드가 없습니다.`);
-            cyInstance.elements().addClass('faded');
+            cyInstance.elements().addClass('faded').removeClass('focused');
             return;
         }
 
-        // 2. 해당 노드들과 직접 연결된 엣지(간선) 및 인접 노드 확보
         const connectedEdges = matchedNodes.connectedEdges();
         const neighborhoodNodes = connectedEdges.connectedNodes();
 
-        // 3. 필터링 대상이 되는 전체 활성 개체 그룹 정의
+        // 필터링 메인 서브넷 지정
         const activeSubnet = matchedNodes.union(connectedEdges).union(neighborhoodNodes);
 
-        // 4. 나머지 요소들은 흐리게 처리(faded), 선택된 서브넷은 선명하게 보존
-        cyInstance.elements().addClass('faded');
-        activeSubnet.removeClass('faded');
+        // 전체 상태값 초기화 후 분리 적용
+        cyInstance.elements().removeClass('focused').addClass('faded');
+        
+        // 서브넷 내부 요소들은 투명화 해제 및 최상단 z-index 레이어 적용
+        activeSubnet.removeClass('faded').addClass('focused');
 
-        // 5. 검색된 중심 노드들을 붉은색 선택 상태로 변환 및 포커싱
         cyInstance.elements().unselect();
         matchedNodes.select();
 
@@ -303,10 +313,9 @@
             duration: 400
         });
 
-        updateStatus(`검색 완료: '${keyword}' 노드 및 연결된 엣지들을 하이라이트했습니다.`);
+        updateStatus(`검색 완료: '${keyword}' 노드 및 관계 레이어를 가상 최상단으로 정렬했습니다.`);
     }
 
-    // 데이터 상세 정보창 출력
     function showDetails(data) {
         const container = document.getElementById('details');
         if (data.source) {
@@ -328,7 +337,6 @@
         }
     }
 
-    // OpenAI 자연어 처리부
     async function executeNaturalLanguageQuery() {
         const apiKey = document.getElementById('apiKey').value.trim();
         const query = document.getElementById('naturalQuery').value.trim();
@@ -337,7 +345,7 @@
         if (!query) { alert("질문 내용을 입력해 주세요."); return; }
 
         updateStatus("AI가 자연어를 분석하여 그래프 검색 쿼리를 수립 중입니다...");
-        cyInstance.elements().removeClass('faded');
+        cyInstance.elements().removeClass('faded').removeClass('focused');
 
         const systemInstruction = `
             You are an expert assistant translating natural language into Cytoscape.js selectors for a Korean Literary History Database.
@@ -388,7 +396,7 @@
     function resetVisualization() {
         if (cyInstance) {
             cyInstance.elements().unselect();
-            cyInstance.elements().removeClass('faded');
+            cyInstance.elements().removeClass('faded').removeClass('focused');
             cyInstance.animate({ fit: { padding: 40 }, duration: 400 });
             document.getElementById('localKeyword').value = "";
             updateStatus("그래프 탐색 상태가 초기화되었습니다.");
