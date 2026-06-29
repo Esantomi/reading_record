@@ -2,299 +2,358 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>김기림 문단 네트워크 & 독서 이력 아카이브</title>
-    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <script type="text/javascript" src="data.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>문인 독서 및 언급 이력 그래프 DB 시스템</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    
     <style>
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; background-color: #f8fafc;
-            color: #334155;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0; padding: 20px; background-color: #f1f5f9; color: #1e293b;
         }
-        #sidebar {
-            width: 38%; height: 100%; border-right: 1px solid #e2e8f0;
-            padding: 35px; box-sizing: border-box; overflow-y: auto; background-color: #ffffff;
-            display: flex; flex-direction: column;
+        .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        header { border-bottom: 2px solid #cbd5e1; padding-bottom: 10px; }
+        h1 { margin: 0; font-size: 22px; color: #0f172a; }
+        
+        .config-panel, .query-panel {
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        #graph-container { width: 62%; height: 100%; position: relative; background-color: #f1f5f9; }
-        
-        .search-section {
-            margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0;
-            position: relative;
+        label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 6px; color: #475569; }
+        input[type="password"], input[type="text"] {
+            width: 100%; padding: 10px; border: 1px solid #cbd5e1;
+            border-radius: 6px; font-size: 14px; margin-bottom: 8px;
         }
-        .search-label { font-size: 9.5pt; font-weight: 700; color: #475569; margin-bottom: 8px; display: block; }
-        .search-box {
-            width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1;
-            font-size: 10pt; box-sizing: border-box; outline: none;
+        button {
+            background-color: #2563eb; color: white; border: none; padding: 10px 16px;
+            border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px; margin-right: 5px;
         }
-        .search-box:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        button:hover { background-color: #1d4ed8; }
         
-        #search-results {
-            max-height: 180px; overflow-y: auto; margin-top: 5px; font-size: 9.5pt; 
-            background: #fff; border-radius: 4px; border: 1px solid #cbd5e1; display: none;
-            position: absolute; left: 15px; right: 15px; z-index: 10; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        /* 메인 레이아웃: 그래프 영역과 우측 정보창 분할 */
+        .main-layout { display: flex; gap: 15px; height: 650px; }
+        #cy {
+            flex: 3; background: white; border: 1px solid #e2e8f0; 
+            border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .search-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
-        .search-item:hover, .search-item.active { background-color: #f1f5f9; }
-
-        .content-view { flex: 1; }
-        h1 { font-size: 16pt; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 8px; line-height: 1.3; }
-        .subtitle { font-size: 10.5pt; color: #64748b; margin-bottom: 25px; }
+        .details-panel {
+            flex: 1; background: white; border: 1px solid #e2e8f0;
+            border-radius: 8px; padding: 15px; overflow-y: auto;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .details-panel h2 { font-size: 16px; margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+        .detail-item { margin-bottom: 12px; font-size: 13px; }
+        .detail-label { font-weight: bold; color: #64748b; margin-bottom: 2px; }
+        .detail-value { background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #f1f5f9; word-break: break-all; }
         
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 8.5pt; font-weight: 700; margin-bottom: 12px; }
-        .badge.writer { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
-        .badge.book { background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-        .badge.person { background-color: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
-        .badge.unknown { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
-        
-        .desc { font-size: 11pt; line-height: 1.6; color: #475569; margin-bottom: 35px; word-break: keep-all; }
-        .section-title { font-size: 12pt; font-weight: 700; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 15px; }
-        
-        .relation-list { padding: 0; margin: 0; list-style: none; }
-        .relation-item { padding: 14px; background: #f8fafc; border: 1px solid #f1f5f9; margin-bottom: 10px; border-radius: 8px; font-size: 10pt; line-height: 1.5; }
-        .relation-item a { color: #2563eb; font-weight: 700; text-decoration: none; }
-        .relation-item a:hover { text-decoration: underline; }
-        
-        .rel-label { display: inline-block; font-size: 8.5pt; font-weight: 800; color: #64748b; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
-        .source-text { font-size: 9pt; color: #64748b; margin-top: 6px; background: #ffffff; padding: 8px; border-left: 3px solid #cbd5e1; border-radius: 2px; font-style: italic; }
-        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; color: #166534; font-size: 10pt; }
+        .status-msg { font-size: 13px; color: #2563eb; font-weight: 500; margin-top: 5px; min-height: 20px; }
+        .legend { display: flex; gap: 15px; font-size: 12px; margin-top: 5px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 12px; height: 12px; border-radius: 50px; display: inline-block; }
     </style>
 </head>
 <body>
 
-<div id="sidebar">
-    <div class="search-section">
-        <label class="search-label" for="searchNode">🔍 온톨로지 개체 검색 (검색어 입력 후 엔터)</label>
-        <input type="text" id="searchNode" class="search-box" placeholder="예: 김기림, 파우스트, 홍염, 엘리엇..." autocomplete="off">
-        <div id="search-results"></div>
+<div class="container">
+    <header>
+        <h1>문인 독서 및 언급 이력 연구용 그래프 DB 시스템</h1>
+        <div class="legend">
+            <div class="legend-item"><span class="dot" style="background-color: #1d4ed8;"></span> 연구 대상자(독자)</div>
+            <div class="legend-item"><span class="dot" style="background-color: #0f766e; border-radius: 2px;"></span> 언급/독서 대상 (저서 및 인물)</div>
+            <div class="legend-item"><span class="dot" style="background-color: #e11d48;"></span> 선택/하이라이트 상태</div>
+        </div>
+    </header>
+
+    <div class="config-panel">
+        <label for="apiKey">OpenAI API Key 입력</label>
+        <input type="password" id="apiKey" placeholder="sk-proj-..." />
     </div>
 
-    <div class="content-view">
-        <div id="welcome-view">
-            <h1>김기림 문단 네트워크<br>온톨로지 아카이브</h1>
-            <p class="subtitle">연구 데이터 기반 파일럿 웹 서비스</p>
-            <div class="info-box">
-                💡 상단의 <strong>검색창에 단어를 입력하고 엔터(Enter)</strong>를 누르거나, 오른쪽 시각화 지도에서 노드를 클릭하면 개별 근거 원문이 표출됩니다.
-            </div>
-        </div>
+    <div class="query-panel">
+        <label for="naturalQuery">자연어 탐색 및 질의</label>
+        <input type="text" id="naturalQuery" placeholder="예: '랭보'를 읽은 기록 찾아줘, 'criticize'(비판) 관계만 보여줘, 근거 문헌에 '미국'이 들어가는 선 선택해줘" />
+        <button onclick="executeNaturalLanguageQuery()">질의 실행 (AI)</button>
+        <button onclick="resetVisualization()" style="background-color: #475569;">전체 초기화</button>
+        <div id="status" class="status-msg"></div>
+    </div>
+
+    <div class="main-layout">
+        <div id="cy"></div>
         
-        <div id="detail-view" style="display: none;">
-            <span id="node-type" class="badge"></span>
-            <h1 id="node-name">개체명</h1>
-            <div id="node-desc" class="desc">개체 설명</div>
-            
-            <div class="section-title">연결된 이력 및 관계망 (Hop-1)</div>
-            <ul id="node-relations" class="relation-list"></ul>
+        <div class="details-panel" id="details">
+            <h2>상세 정보 창</h2>
+            <p style="color: #94a3b8; font-size: 13px;">그래프의 노드(원/사각)나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
         </div>
     </div>
 </div>
 
-<div id="graph-container"></div>
+<script>
+    let cyInstance = null;
+    // 브라우저 캐싱용 맵 구조
+    let nodeLabels = new Set();
 
-<script type="text/javascript">
-    const container = document.getElementById('graph-container');
-    let network = null;
-    let selectedIndex = -1;
+    // 1. 파일 로드 및 원본 데이터 기반 자바스크립트 그래프 모델 동적 생성
+    async function initializeGraphSystem() {
+        updateStatus("서버로부터 언급 이력 및 독서 이력 CSV 데이터를 불러오는 중...");
+        try {
+            const [mentionRes, readingRes] = await Promise.all([
+                fetch('data/mention_data.csv').then(res => { if(!res.ok) throw new Error("mention_data.csv 로드 실패"); return res.text(); }),
+                fetch('data/reading_data.csv').then(res => { if(!res.ok) throw new Error("reading_data.csv 로드 실패"); return res.text(); })
+            ]);
 
-    function initGraph() {
-        if (typeof LITERARY_DATA === 'undefined') {
-            alert("data.js 파일을 찾지 못했거나 문법 오류가 있습니다. F12 개발자 도구 콘솔창을 확인하세요.");
-            return;
-        }
+            const mentionData = Papa.parse(mentionRes, { header: true, skipEmptyLines: true }).data;
+            const readingData = Papa.parse(readingRes, { header: true, skipEmptyLines: true }).data;
 
-        const nodesArray = [];
-        const checkedNodeIds = new Set(Object.keys(LITERARY_DATA.nodes));
+            const elements = [];
 
-        LITERARY_DATA.edges.forEach(edge => {
-            if (!checkedNodeIds.has(edge.from)) {
-                LITERARY_DATA.nodes[edge.from] = { id: edge.from, name: edge.from, type: "UNKNOWN", description: "식별 정보 부족 개체" };
-                checkedNodeIds.add(edge.from);
-            }
-            if (!checkedNodeIds.has(edge.to)) {
-                LITERARY_DATA.nodes[edge.to] = { id: edge.to, name: edge.to, type: "UNKNOWN", description: "식별 정보 부족 개체" };
-                checkedNodeIds.add(edge.to);
-            }
-        });
-
-        Object.values(LITERARY_DATA.nodes).forEach(node => {
-            if(!node || !node.id) return;
-            let shape = 'ellipse'; let bgColor = '#dbeafe'; let borderColor = '#3b82f6';
-            if (node.type === 'BOOK') { shape = 'box'; bgColor = '#dcfce7'; borderColor = '#22c55e'; }
-            else if (node.type === 'PERSON') { shape = 'database'; bgColor = '#fdf2f8'; borderColor = '#ec4899'; }
-
-            nodesArray.push({
-                id: node.id, label: node.name, shape: shape,
-                color: { background: bgColor, border: borderColor, highlight: { background: '#fef08a', border: '#eab308' } },
-                font: { size: 13, color: '#1e293b' }, margin: 10
-            });
-        });
-
-        const edgesArray = LITERARY_DATA.edges.map(edge => ({
-            from: edge.from, to: edge.to, label: edge.label,
-            font: { size: 9, color: '#64748b', align: 'middle' },
-            arrows: 'to', color: { color: '#cbd5e1', highlight: '#3b82f6' },
-            smooth: { type: 'cubicBezier', roundness: 0.5 }
-        }));
-
-        const data = { nodes: new vis.DataSet(nodesArray), edges: new vis.DataSet(edgesArray) };
-        const options = {
-            physics: { barnesHut: { gravitationalConstant: -3500, centralGravity: 0.25, springLength: 140 } },
-            interaction: { hover: true }
-        };
-
-        network = new vis.Network(container, data, options);
-        network.on("click", function (params) {
-            if (params.nodes.length > 0) {
-                window.location.hash = params.nodes[0];
-            }
-        });
-    }
-
-    function showSearchResults(query) {
-        const resultsDiv = document.getElementById('search-results');
-        if (!query) { resultsDiv.style.display = 'none'; return; }
-        
-        resultsDiv.innerHTML = '';
-        let matchCount = 0;
-        const matchedNodes = [];
-
-        Object.values(LITERARY_DATA.nodes).forEach(node => {
-            if (node && node.name && node.name.toLowerCase().includes(query)) {
-                matchedNodes.push(node);
-            }
-        });
-
-        matchedNodes.forEach((node) => {
-            matchCount++;
-            const item = document.createElement('div');
-            item.className = 'search-item';
-            item.dataset.id = node.id;
-            item.innerHTML = `<strong>${node.name}</strong> <span style="font-size:8pt; color:#94a3b8;">(${node.type})</span>`;
-            
-            item.onclick = () => {
-                window.location.hash = node.id;
-                resultsDiv.style.display = 'none';
-                document.getElementById('searchNode').value = node.name;
-            };
-            resultsDiv.appendChild(item);
-        });
-
-        if (matchCount > 0) { resultsDiv.style.display = 'block'; }
-        else {
-            resultsDiv.innerHTML = '<div style="padding:8px 12px; color:#94a3b8;">일치하는 개체가 없습니다.</div>';
-            resultsDiv.style.display = 'block';
-        }
-        selectedIndex = -1;
-    }
-
-    function handleRoute() {
-        const nodeId = window.location.hash.replace('#', '');
-        if (!LITERARY_DATA || !LITERARY_DATA.nodes) return;
-        const node = LITERARY_DATA.nodes[nodeId];
-
-        if (!node || !node.id) {
-            document.getElementById('welcome-view').style.display = 'block';
-            document.getElementById('detail-view').style.display = 'none';
-            if (network) network.unselectNodes();
-            return;
-        }
-
-        document.getElementById('welcome-view').style.display = 'none';
-        document.getElementById('detail-view').style.display = 'block';
-        
-        const typeBadge = document.getElementById('node-type');
-        let typeName = '연구자/문인';
-        if (node.type === 'BOOK') typeName = '도서/문헌';
-        if (node.type === 'PERSON') typeName = '해외인물/개념';
-        
-        typeBadge.innerText = typeName;
-        typeBadge.className = `badge ${node.type ? node.type.toLowerCase() : 'unknown'}`;
-        
-        document.getElementById('node-name').innerText = node.name;
-        document.getElementById('node-desc').innerText = node.description || "정보가 생략된 개체입니다.";
-
-        const relationsList = document.getElementById('node-relations');
-        relationsList.innerHTML = '';
-
-        LITERARY_DATA.edges.forEach(edge => {
-            if (edge.from === nodeId || edge.to === nodeId) {
-                const isSource = edge.from === nodeId;
-                const targetId = isSource ? edge.to : edge.from;
-                const targetNode = LITERARY_DATA.nodes[targetId] || { name: targetId };
-                
-                const li = document.createElement('li');
-                li.className = 'relation-item';
-                let direction = isSource ? `➔ <a href="#${targetId}">${targetNode.name}</a> 지목` : `◀ <a href="#${targetId}">${targetNode.name}</a>에게 지목됨`;
-                
-                li.innerHTML = `
-                    <div><span class="rel-label">${edge.label}</span> ${direction}</div>
-                    <div style="margin-top:4px; font-weight:600; color:#475569;">출처: ${edge.source || '미상'}</div>
-                    ${edge.quote ? `<div class="source-text">"${edge.quote}"</div>` : ''}
-                `;
-                relationsList.appendChild(li);
-            }
-        });
-
-        if (network) {
-            network.selectNodes([nodeId]);
-            network.focus(nodeId, { scale: 1.1, animation: { duration: 400 } });
-        }
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        const searchInput = document.getElementById('searchNode');
-        const resultsDiv = document.getElementById('search-results');
-
-        searchInput.addEventListener('input', (e) => {
-            showSearchResults(e.target.value.trim().toLowerCase());
-        });
-
-        searchInput.addEventListener('keydown', (e) => {
-            const items = resultsDiv.getElementsByClassName('search-item');
-            
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (items.length === 0) return;
-                if (selectedIndex >= 0) items[selectedIndex].classList.remove('active');
-                selectedIndex = (selectedIndex + 1) % items.length;
-                items[selectedIndex].classList.add('active');
-                items[selectedIndex].scrollIntoView({ block: 'nearest' });
-            } 
-            else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (items.length === 0) return;
-                if (selectedIndex >= 0) items[selectedIndex].classList.remove('active');
-                selectedIndex = (selectedIndex - 1 + items.length) % items.length;
-                items[selectedIndex].classList.add('active');
-                items[selectedIndex].scrollIntoView({ block: 'nearest' });
-            } 
-            else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (selectedIndex >= 0 && items[selectedIndex]) {
-                    items[selectedIndex].click();
-                } else if (searchInput.value.trim()) {
-                    const query = searchInput.value.trim().toLowerCase();
-                    const firstMatch = Object.values(LITERARY_DATA.nodes).find(n => n && n.name && n.name.toLowerCase().includes(query));
-                    if (firstMatch) {
-                        window.location.hash = firstMatch.id;
-                        searchInput.value = firstMatch.name;
-                        resultsDiv.style.display = 'none';
-                    }
+            // 안전한 노드 추가 함수
+            function addNode(name, type) {
+                if(!name) return;
+                const trimmed = name.trim();
+                if (!nodeLabels.has(trimmed)) {
+                    nodeLabels.add(trimmed);
+                    elements.push({ data: { id: trimmed, label: trimmed, type: type } });
                 }
             }
-        });
 
-        document.addEventListener('click', (e) => {
-            if (e.target !== searchInput && e.target !== resultsDiv) {
-                resultsDiv.style.display = 'none';
+            // A. 언급 이력 데이터 파싱
+            mentionData.forEach((row, idx) => {
+                const source = row['독자(인물)'];
+                const target = row['저서(문헌)'];
+                const relation = row['술어(관계)'];
+                
+                if(source && target) {
+                    addNode(source, 'Reader');
+                    addNode(target, 'Target');
+                    elements.push({
+                        data: {
+                            id: `m_${idx}`,
+                            source: source.trim(),
+                            target: target.trim(),
+                            relation: relation ? relation.trim() : 'refer to',
+                            score: row['태도(점수)'] || 'N/A',
+                            source_doc: row['근거(문헌)'] || '미기재',
+                            evidence: row['근거 문장'] || '원문 없음',
+                            dataType: 'Mention'
+                        }
+                    });
+                }
+            });
+
+            // B. 독서 이력 데이터 파싱
+            readingData.forEach((row, idx) => {
+                const source = row['독자(인물)'];
+                const target = row['저서(문헌)'];
+                const relation = row['술어(관계)'];
+                
+                if(source && target) {
+                    addNode(source, 'Reader');
+                    addNode(target, 'Target');
+                    elements.push({
+                        data: {
+                            id: `r_${idx}`,
+                            source: source.trim(),
+                            target: target.trim(),
+                            relation: relation ? relation.trim() : 'read',
+                            score: row['태도(점수)'] || 'N/A',
+                            source_doc: row['근거(문헌)'] || '미기재',
+                            evidence: row['추정근거'] || '원문 없음',
+                            dataType: 'Reading'
+                        }
+                    });
+                }
+            });
+
+            // Cytoscape 엔진 가동
+            cyInstance = cytoscape({
+                container: document.getElementById('cy'),
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'font-size': '11px',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'color': '#ffffff',
+                            'background-color': '#64748b',
+                            'width': '65px', 'height': '65px',
+                            'text-wrap': 'wrap', 'text-max-width': '60px'
+                        }
+                    },
+                    {
+                        selector: 'node[type="Reader"]',
+                        style: { 'background-color': '#1d4ed8', 'shape': 'ellipse' }
+                    },
+                    {
+                        selector: 'node[type="Target"]',
+                        style: { 'background-color': '#0f766e', 'shape': 'round-rectangle', 'color': '#ffffff' }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'line-color': '#cbd5e1',
+                            'target-arrow-color': '#cbd5e1',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier', /* 중복 관계선 곡선 자동 분리 */
+                            'label': 'data(relation)',
+                            'font-size': '9px',
+                            'color': '#475569',
+                            'text-rotation': 'autorotate'
+                        }
+                    },
+                    {
+                        selector: ':selected',
+                        style: {
+                            'background-color': '#e11d48',
+                            'line-color': '#e11d48',
+                            'target-arrow-color': '#e11d48',
+                            'color': '#ffffff',
+                            'font-weight': 'bold',
+                            'width': '75px', 'height': '75px'
+                        }
+                    }
+                ],
+                layout: { name: 'cose', padding: 40, idealEdgeLength: 100 }
+            });
+
+            // 이벤트 바인딩: 오브젝트 클릭 시 우측 상세 보기창 업데이트
+            cyInstance.on('tap', 'node, edge', function(evt){
+                const item = evt.target;
+                showDetails(item.data());
+            });
+
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 및 이력 데이터를 결합했습니다.`);
+
+        } catch (error) {
+            updateStatus(`오류가 발생했습니다: ${error.message}`);
+            console.error(error);
+        }
+    }
+
+    // 데이터 메타 속성 시각화 창 처리 함수
+    function showDetails(data) {
+        const container = document.getElementById('details');
+        if (data.source) { // 간선(Edge)인 경우
+            container.innerHTML = `
+                <h2>관계 이력 상세</h2>
+                <div class="detail-item"><div class="detail-label">독자(인물)</div><div class="detail-value">${data.source}</div></div>
+                <div class="detail-item"><div class="detail-label">술어(관계)</div><div class="detail-value">${data.relation} (출처: ${data.dataType})</div></div>
+                <div class="detail-item"><div class="detail-label">대상(저서/인물)</div><div class="detail-value">${data.target}</div></div>
+                <div class="detail-item"><div class="detail-label">태도 점수</div><div class="detail-value">${data.score}</div></div>
+                <div class="detail-item"><div class="detail-label">근거 문헌(출처 내용)</div><div class="detail-value">${data.source_doc}</div></div>
+                <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
+            `;
+        } else { // 정점(Node)인 경우
+            container.innerHTML = `
+                <h2>개체 정보</h2>
+                <div class="detail-item"><div class="detail-label">이름 / 명칭</div><div class="detail-value" style="font-weight:bold; font-size:15px;">${data.label}</div></div>
+                <div class="detail-item"><div class="detail-label">네트워크 노드 타입</div><div class="detail-value">${data.type === 'Reader' ? '연구 대상자 (독자)' : '인용/독서 대상 (저서 및 인물)'}</div></div>
+            `;
+        }
+    }
+
+    // 2. OpenAI 인터페이스를 활용한 자연어 처리부
+    async function executeNaturalLanguageQuery() {
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const query = document.getElementById('naturalQuery').value.trim();
+
+        if (!apiKey) { alert("상단의 OpenAI API Key를 입력해 주세요."); return; }
+        if (!query) { alert("질문 내용을 입력해 주세요."); return; }
+
+        updateStatus("AI가 자연어를 분석하여 그래프 검색 쿼리를 수립 중입니다...");
+
+        const systemInstruction = `
+            You are an expert assistant translating natural language into Cytoscape.js selectors for a Korean Literary History Database.
+            
+            Database Schema Specifications:
+            - Node Attributes: 'id', 'label' (e.g., '김기림', '랭보', '악의 꽃'), 'type' ('Reader' or 'Target')
+            - Edge Attributes: 
+               * 'relation' (Values: 'refer to', 'read', 'criticize', 'cite', 'translate')
+               * 'score' (Attitude score)
+               * 'source_doc' (Source text title)
+               * 'evidence' (Context sentences containing keywords)
+               * 'dataType' ('Mention' or 'Reading')
+
+            Output Rules:
+            1. Return ONLY a valid JSON with a "selector" key. 
+            2. Do not wrap the JSON in markdown code blocks.
+            3. Use data operators correctly:
+               - To match labels: node[label = '랭보']
+               - To match relations: edge[relation = 'criticize']
+               - To perform partial string matches (contains): edge[source_doc *= '미국'] or edge[evidence *= '주의']
+        `;
+
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        { role: 'system', content: systemInstruction },
+                        { role: 'user', content: `Translate this query into a selector: ${query}` }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.1
+                })
+            });
+
+            if(!response.ok) {
+                const errorLog = await response.json();
+                throw new Error(errorLog.error?.message || "API 통신 장애");
             }
-        });
 
-        initGraph();
-        handleRoute();
-    });
+            const data = await response.json();
+            const result = JSON.parse(data.choices[0].message.content.trim());
+            const targetSelector = result.selector;
 
-    window.addEventListener('hashchange', handleRoute);
+            updateStatus(`분석된 컴포넌트 셀렉터: ${targetSelector}`);
+
+            if (cyInstance && targetSelector) {
+                cyInstance.elements().unselect();
+                const matched = cyInstance.filter(targetSelector);
+
+                if(matched.length === 0) {
+                    updateStatus(`검색에 매칭되는 데이터 노드나 선이 존재하지 않습니다: ${targetSelector}`);
+                } else {
+                    matched.select();
+                    // 연관 관계 가독성을 위해 선택된 개체들과 직접 연결된 요소들도 함께 하이라이트 확장 유도
+                    matched.neighborhood().nodes().addClass('highlighted'); 
+                    
+                    cyInstance.animate({
+                        fit: { eles: matched, padding: 60 },
+                        duration: 400
+                    });
+                }
+            }
+
+        } catch (error) {
+            updateStatus(`질의 번역 에러: ${error.message}`);
+            console.error(error);
+        }
+    }
+
+    function resetVisualization() {
+        if (cyInstance) {
+            cyInstance.elements().unselect();
+            cyInstance.animate({ fit: { padding: 40 }, duration: 400 });
+            updateStatus("그래프 탐색 상태가 초기화되었습니다.");
+            document.getElementById('details').innerHTML = `
+                <h2>상세 정보 창</h2>
+                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드(원/사각)나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
+            `;
+        }
+    }
+
+    function updateStatus(text) { document.getElementById('status').innerText = text; }
+
+    window.onload = initializeGraphSystem;
 </script>
 </body>
 </html>
