@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>한국 문인 독서 이력 지식 네트워크 (견본)</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        h1 { font-size: 20pt; color: #111827; margin-bottom: 5px; }
+        .container { display: block; margin: 0 auto; max-width: 1200px; }
+        /* 그래프가 그려지는 영역 */
+        #network-graph {
+            width: 100%;
+            height: 650px;
+            border: 1px solid #e5e7eb;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        #info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            font-size: 11pt;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>한국 근현대 문인 독서 이력 지식 네트워크 (Demo)</h1>
+    <p style="color: #6b7280; margin-top: 0;">보유하신 TSV/CSV 데이터를 기반으로 구성한 인터랙티브 정적 프로토타입입니다.</p>
+    
+    <div id="info">💡 노드를 클릭하면 해당 문인이나 도서의 중심 네트워크를 탐색할 수 있습니다.</div>
+    <br>
+    
+    <div id="network-graph"></div>
+</div>
+
+<script type="text/javascript">
+    // [중요] 갖고 계신 TSV/CSV 데이터 중 일부를 아래 형식(Nodes와 Edges)으로 변환해 매핑합니다.
+    // 데모용 예시 데이터입니다.
+    const rawNodes = [
+        { id: "writer_yi_sang", label: "이상 (李箱)", group: "writer" },
+        { id: "writer_kim_yu_jeong", label: "김유정 (金裕貞)", group: "writer" },
+        { id: "book_mujongi", label: "무정 (이광수 著)", group: "book" },
+        { id: "book_madame_bovary", label: "마담 보바리 (플로베르 著)", group: "book" },
+        { id: "book_science_text", label: "상대성원리 해설", group: "book" }
+    ];
+
+    const rawEdges = [
+        { from: "writer_yi_sang", to: "book_science_text", label: "READ" },
+        { from: "writer_yi_sang", to: "book_madame_bovary", label: "READ" },
+        { from: "writer_kim_yu_jeong", to: "book_madame_bovary", label: "READ" },
+        { from: "writer_kim_yu_jeong", to: "book_mujongi", label: "READ" },
+        { from: "writer_yi_sang", to: "writer_kim_yu_jeong", label: "FRIENDSHIP" } // 문인 간 관계도 가능
+    ];
+
+    // Vis.js용 데이터셋 생성 및 스타일 정의
+    const nodes = new vis.DataSet(rawNodes.map(node => {
+        return {
+            id: node.id,
+            label: node.label,
+            shape: node.group === 'writer' ? 'ellipse' : 'box',
+            color: node.group === 'writer' ? { background: '#dbeafe', border: '#3b82f6' } : { background: '#dcfce7', border: '#22c55e' },
+            font: { size: 14, color: '#111827' },
+            borderWidth: 2
+        };
+    }));
+
+    const edges = new vis.DataSet(rawEdges.map(edge => {
+        return {
+            from: edge.from,
+            to: edge.to,
+            label: edge.label,
+            font: { size: 10, align: 'middle', color: '#9ca3af' },
+            color: { color: '#cbd5e1', highlight: '#3b82f6' },
+            arrows: edge.label === 'READ' ? 'to' : '' // 독서 이력은 화살표 표시
+        };
+    }));
+
+    // 그래프 노출 옵션 설정
+    const container = document.getElementById('network-graph');
+    const data = { nodes: nodes, edges: edges };
+    const options = {
+        physics: {
+            barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150 }
+        },
+        interaction: { hover: true }
+    };
+
+    // 네트워크 그래프 초기화
+    const network = new vis.Network(container, data, options);
+
+    // 클릭 이벤트 리스너 인터랙션 추가
+    network.on("click", function (params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const clickedNode = nodes.get(nodeId);
+            document.getElementById('info').innerHTML = `선택된 노드: <strong>${clickedNode.label}</strong> (ID: ${nodeId})`;
+        }
+    });
+</script>
+</body>
+</html>
