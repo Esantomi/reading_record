@@ -3,38 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <title>김기림 문단 네트워크 & 독서 이력 아카이브</title>
-    <!-- Vis.js 네트워크 시각화 라이브러리 로드 -->
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <!-- 외부 데이터 파일인 data.js를 동적으로 결합 -->
     <script type="text/javascript" src="data.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
             margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; background-color: #f8fafc;
             color: #334155;
         }
         #sidebar {
             width: 38%; height: 100%; border-right: 1px solid #e2e8f0;
             padding: 35px; box-sizing: border-box; overflow-y: auto; background-color: #ffffff;
-            box-shadow: 2px 0 8px rgba(0,0,0,0.02);
         }
         #graph-container { width: 62%; height: 100%; position: relative; background-color: #f1f5f9; }
-        h1 { font-size: 18pt; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 8px; line-height: 1.3; }
-        .subtitle { font-size: 10.5pt; color: #64748b; margin-bottom: 25px; line-height: 1.5; }
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 8.5pt; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; }
+        h1 { font-size: 18pt; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 8px; }
+        .subtitle { font-size: 10.5pt; color: #64748b; margin-bottom: 25px; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 8.5pt; font-weight: 700; margin-bottom: 12px; }
         .badge.writer { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
         .badge.book { background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
         .badge.person { background-color: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
         .desc { font-size: 11pt; line-height: 1.6; color: #475569; margin-bottom: 35px; word-break: keep-all; }
         .section-title { font-size: 12pt; font-weight: 700; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 15px; }
         .relation-list { list-style: none; padding: 0; margin: 0; }
-        .relation-item { padding: 14px; background: #f8fafc; border: 1px solid #f1f5f9; margin-bottom: 10px; border-radius: 8px; font-size: 10pt; line-height: 1.5; transition: background 0.2s; }
-        .relation-item:hover { background: #f1f5f9; }
+        .relation-item { padding: 14px; background: #f8fafc; border: 1px solid #f1f5f9; margin-bottom: 10px; border-radius: 8px; font-size: 10pt; }
         .relation-item a { color: #2563eb; font-weight: 700; text-decoration: none; }
-        .relation-item a:hover { text-decoration: underline; }
         .rel-label { display: inline-block; font-size: 8.5pt; font-weight: 800; color: #64748b; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
         .source-text { font-size: 9pt; color: #64748b; margin-top: 4px; background: #ffffff; padding: 8px; border-left: 3px solid #cbd5e1; border-radius: 2px; font-style: italic; }
-        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; color: #166534; font-size: 10pt; line-height: 1.5; }
+        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; color: #166534; font-size: 10pt; }
     </style>
 </head>
 <body>
@@ -45,7 +40,7 @@
         <p class="subtitle">연구 데이터 기반 파일럿 웹 서비스</p>
         <div class="info-box">
             👉 <strong>탐색 방법:</strong><br>
-            오른쪽의 거대한 지식 지형도에서 <strong>노드(원/사각형)를 클릭</strong>해 보세요. 해당 인물이나 문헌의 상세 연결 상태와 원문 근거 이력으로 화면이 즉시 전환됩니다. 좌측 인접 리스트의 링크를 통해서도 연쇄 탐색이 가능합니다.
+            오른쪽 지형도에서 <strong>노드를 클릭</strong>하면 상세 정보 카드가 표출됩니다.
         </div>
     </div>
     
@@ -53,7 +48,6 @@
         <span id="node-type" class="badge"></span>
         <h1 id="node-name">개체명</h1>
         <div id="node-desc" class="desc">개체 설명</div>
-        
         <div class="section-title">연결된 이력 및 관계망 (Hop-1)</div>
         <ul id="node-relations" class="relation-list"></ul>
     </div>
@@ -66,19 +60,21 @@
     let network = null;
 
     function initGraph() {
+        // [방어코드] 데이터 파일 확인 안전장치
+        if (typeof LITERARY_DATA === 'undefined') {
+            console.error("data.js 파일을 찾을 수 없거나 데이터가 올바르지 않습니다.");
+            return;
+        }
+
         const nodesArray = Object.values(LITERARY_DATA.nodes).map(node => {
             let shape = 'ellipse';
             let bgColor = '#dbeafe';
             let borderColor = '#3b82f6';
             
             if (node.type === 'BOOK') {
-                shape = 'box';
-                bgColor = '#dcfce7';
-                borderColor = '#22c55e';
+                shape = 'box'; bgColor = '#dcfce7'; borderColor = '#22c55e';
             } else if (node.type === 'PERSON') {
-                shape = 'database';
-                bgColor = '#fdf2f8';
-                borderColor = '#ec4899';
+                shape = 'database'; bgColor = '#fdf2f8'; borderColor = '#ec4899';
             }
 
             return {
@@ -86,35 +82,39 @@
                 label: node.name,
                 shape: shape,
                 color: { background: bgColor, border: borderColor, highlight: { background: '#fef08a', border: '#eab308' } },
-                font: { size: 13, face: 'apple-system, sans-serif', color: '#1e293b' },
+                font: { size: 13, color: '#1e293b' },
                 margin: 10
             };
         });
 
+        // [방어코드] 만약 edges의 목적지 노드가 nodes에 없으면 강제로 빈 노드를 생성해 뻗지 않게 제어
+        LITERARY_DATA.edges.forEach(edge => {
+            if (!LITERARY_DATA.nodes[edge.from]) {
+                LITERARY_DATA.nodes[edge.from] = { id: edge.from, name: edge.from, type: "UNKNOWN", description: "미지정 개체" };
+                nodesArray.push({ id: edge.from, label: edge.from, shape: 'ellipse' });
+            }
+            if (!LITERARY_DATA.nodes[edge.to]) {
+                LITERARY_DATA.nodes[edge.to] = { id: edge.to, name: edge.to, type: "UNKNOWN", description: "미지정 개체" };
+                nodesArray.push({ id: edge.to, label: edge.to, shape: 'ellipse' });
+            }
+        });
+
         const edgesArray = LITERARY_DATA.edges.map(edge => ({
-            from: edge.from,
-            to: edge.to,
-            label: edge.label,
+            from: edge.from, to: edge.to, label: edge.label,
             font: { size: 9, color: '#64748b', align: 'middle' },
-            arrows: 'to',
-            color: { color: '#cbd5e1', highlight: '#3b82f6' },
+            arrows: 'to', color: { color: '#cbd5e1', highlight: '#3b82f6' },
             smooth: { type: 'cubicBezier', roundness: 0.5 }
         }));
 
         const data = { nodes: new vis.DataSet(nodesArray), edges: new vis.DataSet(edgesArray) };
         const options = {
-            physics: {
-                barnesHut: { gravitationalConstant: -3000, centralGravity: 0.2, springLength: 150, springConstant: 0.04 }
-            },
-            interaction: { hover: true, tooltipDelay: 200 }
+            physics: { barnesHut: { gravitationalConstant: -3000, centralGravity: 0.2, springLength: 150 } },
+            interaction: { hover: true }
         };
 
         network = new vis.Network(container, data, options);
-
         network.on("click", function (params) {
-            if (params.nodes.length > 0) {
-                window.location.hash = params.nodes[0];
-            }
+            if (params.nodes.length > 0) window.location.hash = params.nodes[0];
         });
     }
 
@@ -146,44 +146,30 @@
         const relationsList = document.getElementById('node-relations');
         relationsList.innerHTML = '';
 
-        let hasRelations = false;
         LITERARY_DATA.edges.forEach(edge => {
             if (edge.from === nodeId || edge.to === nodeId) {
-                hasRelations = true;
                 const isSource = edge.from === nodeId;
                 const targetId = isSource ? edge.to : edge.from;
                 const targetNode = LITERARY_DATA.nodes[targetId] || { name: targetId };
                 
                 const li = document.createElement('li');
                 li.className = 'relation-item';
+                let direction = isSource ? `➔ <a href="#${targetId}">${targetNode.name}</a> 지목` : `◀ <a href="#${targetId}">${targetNode.name}</a>에게 지목됨`;
                 
-                let relDirectionText = isSource 
-                    ? `➔ <a href="#${targetId}">${targetNode.name}</a> 상대로 관계 발생`
-                    : `◀ <a href="#${targetId}">${targetNode.name}</a>로부터 지목됨`;
-
                 li.innerHTML = `
-                    <div><span class="rel-label">${edge.label}</span> ${relDirectionText}</div>
-                    <div style="margin-top:4px; font-weight:600; color:#475569;">출처 문헌: ${edge.source || '미상'}</div>
+                    <div><span class="rel-label">${edge.label}</span> ${direction}</div>
+                    <div style="margin-top:4px; font-weight:600; color:#475569;">출처: ${edge.source}</div>
                     ${edge.quote ? `<div class="source-text">"${edge.quote}"</div>` : ''}
                 `;
                 relationsList.appendChild(li);
             }
         });
 
-        if (!hasRelations) {
-            relationsList.innerHTML = '<li class="relation-item" style="color:#94a3b8;">연결된 이력 레코드가 없습니다.</li>';
-        }
-
-        if (network) {
-            network.selectNodes([nodeId]);
-        }
+        if (network) network.selectNodes([nodeId]);
     }
 
     window.addEventListener('hashchange', handleRoute);
-    window.onload = () => {
-        initGraph();
-        handleRoute();
-    };
+    window.onload = () => { initGraph(); handleRoute(); };
 </script>
 </body>
 </html>
