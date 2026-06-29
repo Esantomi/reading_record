@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>문인 독서 및 언급 이력 그래프 DB 시스템</title>
+    <title>문인 독서 및 언급 이력 통합 관리 시스템</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
@@ -14,7 +14,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0; padding: 20px; background-color: #f1f5f9; color: #1e293b;
         }
-        .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        .container { max-width: 1500px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
         header { border-bottom: 2px solid #cbd5e1; padding-bottom: 10px; }
         h1 { margin: 0; font-size: 22px; color: #0f172a; }
         
@@ -41,7 +41,18 @@
         .btn-reset { background-color: #475569; }
         .btn-reset:hover { background-color: #334155; }
         
-        /* 메인 레이아웃 */
+        /* 탭 구조 스타일링 */
+        .tab-container { display: flex; gap: 4px; margin-top: 10px; border-bottom: 2px solid #cbd5e1; }
+        .tab-btn {
+            padding: 10px 20px; background: #e2e8f0; color: #475569; border: none;
+            border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer;
+            font-weight: 600; font-size: 14px; transition: all 0.2s;
+        }
+        .tab-btn.active { background: #2563eb; color: white; }
+        .tab-content { display: none; background: transparent; }
+        .tab-content.active { display: block; }
+
+        /* 메인 레이아웃 (그래프 용) */
         .main-layout { display: flex; gap: 15px; height: 650px; }
         #cy {
             flex: 3; background: white; border: 1px solid #e2e8f0; 
@@ -57,61 +68,135 @@
         .detail-label { font-weight: bold; color: #64748b; margin-bottom: 2px; }
         .detail-value { background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #f1f5f9; word-break: break-all; }
         
+        /* 데이터 테이블 패널 및 표 스타일링 */
+        .table-panel {
+            background: white; padding: 20px; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;
+        }
+        .table-wrapper { width: 100%; overflow-x: auto; max-height: 550px; overflow-y: auto; margin-top: 10px; border: 1px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+        th, td { padding: 10px 12px; border: 1px solid #e2e8f0; }
+        th { background-color: #f8fafc; color: #334155; font-weight: 600; position: sticky; top: 0; z-index: 10; box-shadow: inset 0 -1px 0 #e2e8f0; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        tr:hover { background-color: #f1f5f9; }
+        
         .status-msg { font-size: 13px; color: #2563eb; font-weight: 500; margin-top: 5px; min-height: 20px; }
         .legend { display: flex; gap: 15px; font-size: 12px; margin-top: 5px; }
         .legend-item { display: flex; align-items: center; gap: 5px; }
         .dot { width: 12px; height: 12px; border-radius: 50px; display: inline-block; }
+        .table-filter-input { width: 250px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>문인 독서 및 언급 이력 연구용 그래프 DB 시스템</h1>
+        <h1>문인 독서 및 언급 이력 통합 연구 시스템</h1>
         <div class="legend">
             <div class="legend-item"><span class="dot" style="background-color: #1d4ed8;"></span> 연구 대상자(독자)</div>
-            <div class="legend-item"><span class="dot" style="background-color: #0f766e; border-radius: 2px;"></span> 언급/독서 대상 (저서 및 인물)</div>
-            <div class="legend-item"><span class="dot" style="background-color: #e11d48;"></span> 선택/하이라이트 상태</div>
-            <div class="legend-item" style="margin-left:10px; color:#64748b;">* 태도 점수(1~5점)가 높을수록 선이 굵게 표시됩니다.</div>
+            <div class="legend-item"><span class="dot" style="background-color: #0f766e; border-radius: 2px;"></span> 인용/독서 대상 (저서 및 인물)</div>
+            <div class="legend-item"><span class="dot" style="background-color: #e11d48;"></span> 선택 상태</div>
+            <div class="legend-item" style="margin-left:10px; color:#64748b;">* 태도 점수(1~5점)가 높을수록 그래프 선이 굵게 표시됩니다.</div>
         </div>
     </header>
 
-    <div class="panel-grid">
-        <div class="local-search-panel">
-            <label for="localKeyword">무료 로컬 키워드 검색 (인물 / 저서 명칭)</label>
-            <input type="text" id="localKeyword" placeholder="예: 랭보, 엘리엇, 무정 (엔터 가능)" onkeyup="if(event.keyCode==13) executeLocalSearch()" />
-            <div class="btn-group">
-                <button class="btn-local" onclick="executeLocalSearch()">포커스 검색</button>
-                <button class="btn-reset" onclick="resetVisualization()">전체 초기화</button>
+    <div class="tab-container">
+        <button class="tab-btn active" onclick="switchTab('graphTab', this)">📊 그래프 데이터 시각화</button>
+        <button class="tab-btn" onclick="switchTab('mentionTab', this)">📋 언급 이력 원본 테이블</button>
+        <button class="tab-btn" onclick="switchTab('readingTab', this)">📖 독서 이력 원본 테이블</button>
+    </div>
+
+    <div id="graphTab" class="tab-content active">
+        <div class="panel-grid" style="margin-bottom: 15px;">
+            <div class="local-search-panel">
+                <label for="localKeyword">무료 로컬 키워드 검색 (인물 / 저서 명칭)</label>
+                <input type="text" id="localKeyword" placeholder="예: 랭보, 엘리엇, 무정 (엔터 가능)" onkeyup="if(event.keyCode==13) executeLocalSearch()" />
+                <div class="btn-group">
+                    <button class="btn-local" onclick="executeLocalSearch()">포커스 검색</button>
+                    <button class="btn-reset" onclick="resetVisualization()">전체 초기화</button>
+                </div>
+            </div>
+            <div class="query-panel">
+                <label for="apiKey">OpenAI API Key (선택사항)</label>
+                <input type="password" id="apiKey" placeholder="sk-proj-..." style="padding:6px; font-size:12px; margin-bottom:4px;"/>
+                <label for="naturalQuery">AI 자연어 복합 질의</label>
+                <input type="text" id="naturalQuery" placeholder="예: 'criticize' 관계만 보여줘, 근거 문헌에 '미국'이 들어가는 선 선택해줘" />
+                <button onclick="executeNaturalLanguageQuery()">AI 질의 실행</button>
             </div>
         </div>
+        
+        <div class="main-layout">
+            <div id="cy"></div>
+            <div class="details-panel" id="details">
+                <h2>상세 정보 창</h2>
+                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
+            </div>
+        </div>
+    </div>
 
-        <div class="query-panel">
-            <label for="apiKey">OpenAI API Key (선택사항)</label>
-            <input type="password" id="apiKey" placeholder="sk-proj-..." style="padding:6px; font-size:12px; margin-bottom:4px;"/>
-            <label for="naturalQuery">AI 자연어 복합 질의</label>
-            <input type="text" id="naturalQuery" placeholder="예: 'criticize' 관계만 보여줘, 근거 문헌에 '미국'이 들어가는 선 선택해줘" />
-            <button onclick="executeNaturalLanguageQuery()">AI 질의 실행</button>
+    <div id="mentionTab" class="tab-content">
+        <div class="table-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin:0; font-size:16px; color:#1e293b;">언급 이력 데이터 뷰어</h3>
+                <input type="text" class="table-filter-input" id="mentionTableFilter" placeholder="테이블 내 실시간 키워드 검색..." onkeyup="filterTable('mentionTable', this.value)">
+            </div>
+            <div class="table-wrapper">
+                <table id="mentionTable">
+                    <thead>
+                        <tr>
+                            <th>독자(인물)</th>
+                            <th>술어(관계)</th>
+                            <th>저서(문헌)</th>
+                            <th>태도(점수)</th>
+                            <th>근거(문헌)</th>
+                            <th>작업자</th>
+                            <th>근거 문장</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="readingTab" class="tab-content">
+        <div class="table-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin:0; font-size:16px; color:#1e293b;">독서 이력 데이터 뷰어</h3>
+                <input type="text" class="table-filter-input" id="readingTableFilter" placeholder="테이블 내 실시간 키워드 검색..." onkeyup="filterTable('readingTable', this.value)">
+            </div>
+            <div class="table-wrapper">
+                <table id="readingTable">
+                    <thead>
+                        <tr>
+                            <th>독자(인물)</th>
+                            <th>술어(관계)</th>
+                            <th>저서(문헌)</th>
+                            <th>태도(점수)</th>
+                            <th>근거(문헌)</th>
+                            <th>추정상태</th>
+                            <th>작업자</th>
+                            <th>추정근거</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <div id="status" class="status-msg">시스템 초기화 중...</div>
-
-    <div class="main-layout">
-        <div id="cy"></div>
-        <div class="details-panel" id="details">
-            <h2>상세 정보 창</h2>
-            <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
-        </div>
-    </div>
 </div>
 
 <script>
     let cyInstance = null;
     let nodeLabels = new Set();
 
+    // 시스템 로드 단계에서 시각화 그래프 및 정형 구조 데이터 테이블 동시 빌드
     async function initializeGraphSystem() {
-        updateStatus("서버로부터 CSV 데이터를 불러오는 중...");
+        updateStatus("서버로부터 CSV 데이터를 불러와 통합 분석창을 생성하는 중...");
         try {
             const [mentionRes, readingRes] = await Promise.all([
                 fetch('data/mention_data.csv').then(res => { if(!res.ok) throw new Error("mention_data.csv 로드 실패"); return res.text(); }),
@@ -123,6 +208,10 @@
 
             const elements = [];
 
+            // 탭 2, 탭 3 테이블 본문 채우기용 변수 선언
+            const mentionBody = document.querySelector("#mentionTable tbody");
+            const readingBody = document.querySelector("#readingTable tbody");
+
             function addNode(name, type) {
                 if(!name) return;
                 const trimmed = name.trim();
@@ -132,7 +221,7 @@
                 }
             }
 
-            // 언급 이력 데이터 파싱
+            // A. 언급 이력 데이터 가공 및 테이블 매핑
             mentionData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -154,15 +243,28 @@
                             score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['근거 문장'] || '원문 없음',
-                            worker: row['작업자'] || '미기재', /* ★ 언급이력 작업자 파싱 추가 */
+                            worker: row['작업자'] || '미기재',
                             dataType: 'Mention',
                             weight: edgeWidth
                         }
                     });
+
+                    // 테이블 로우 동적 생성
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${source}</b></td>
+                        <td><span style="color:#2563eb;">${row['술어(관계)'] || 'refer to'}</span></td>
+                        <td>${target}</td>
+                        <td>${row['태도(점수)'] || 'N/A'}</td>
+                        <td>${row['근거(문헌)'] || '미기재'}</td>
+                        <td><small>${row['작업자'] || '미기재'}</small></td>
+                        <td style="color:#475569; font-size:12px;">${row['근거 문장'] || '원문 없음'}</td>
+                    `;
+                    mentionBody.appendChild(tr);
                 }
             });
 
-            // 독서 이력 데이터 파싱
+            // B. 독서 이력 데이터 가공 및 테이블 매핑
             readingData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -184,14 +286,28 @@
                             score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['추정근거'] || '원문 없음',
-                            worker: row['작업자'] || '미기재', /* ★ 독서이력 작업자 파싱 추가 */
+                            worker: row['작업자'] || '미기재',
                             dataType: 'Reading',
                             weight: edgeWidth
                         }
                     });
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${source}</b></td>
+                        <td><span style="color:#0d9488;">${row['술어(관계)'] || 'read'}</span></td>
+                        <td>${target}</td>
+                        <td>${row['태도(점수)'] || 'N/A'}</td>
+                        <td>${row['근거(문헌)'] || '미기재'}</td>
+                        <td><span style="background:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:11px;">${row['추정상태'] || '-'}</span></td>
+                        <td><small>${row['작업자'] || '미기재'}</small></td>
+                        <td style="color:#475569; font-size:12px;">${row['추정근거'] || '원문 없음'}</td>
+                    `;
+                    readingBody.appendChild(tr);
                 }
             });
 
+            // Cytoscape 엔진 초기화 구동
             cyInstance = cytoscape({
                 container: document.getElementById('cy'),
                 elements: elements,
@@ -246,9 +362,7 @@
                     },
                     {
                         selector: '.faded',
-                        style: {
-                            'display': 'none'
-                        }
+                        style: { 'display': 'none' }
                     }
                 ],
                 layout: { name: 'cose', padding: 40, idealEdgeLength: 100 }
@@ -258,7 +372,7 @@
                 showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (작업자 추적 태그 추가)`);
+            updateStatus(`통합 완료: 그래프 노드 ${nodeLabels.size}개 빌드 및 2개 연구 원본 엑셀식 테이블 자동 연동 완료.`);
 
         } catch (error) {
             updateStatus(`오류 발생: ${error.message}`);
@@ -266,14 +380,45 @@
         }
     }
 
-    // 로컬 검색 필터링 엔진
+    // 상단 멀티 탭 전환 모듈 함수
+    function switchTab(tabId, buttonElement) {
+        // 전체 탭 컨텐츠 숨김
+        document.querySelectorAll('.tab-content').forEach(content => content.removeClass('active'));
+        // 전체 버튼 비활성화
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        
+        // 클릭한 대상 활성화
+        document.getElementById(tabId).addClass('active');
+        buttonElement.classList.add('active');
+
+        // 그래프 탭으로 복귀 시 컨테이너 크기 리사이징 보정 트리거 실행
+        if (tabId === 'graphTab' && cyInstance) {
+            cyInstance.resize();
+        }
+    }
+
+    // 개별 데이터 테이블 전용 내장 텍스트 필터 정렬 스크립트
+    function filterTable(tableId, value) {
+        const filter = value.toLowerCase();
+        const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            if(text.includes(filter)) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        });
+    }
+
+    // 로컬 그래프 탐색 모듈
     function executeLocalSearch() {
         const keyword = document.getElementById('localKeyword').value.trim();
         if (!keyword) {
             resetVisualization();
             return;
         }
-
         if (!cyInstance) return;
 
         updateStatus(`'${keyword}' 관련 네트워크 추출 중...`);
@@ -298,15 +443,10 @@
         cyInstance.elements().unselect();
         matchedNodes.select();
 
-        cyInstance.animate({
-            fit: { eles: activeSubnet, padding: 60 },
-            duration: 400
-        });
-
-        updateStatus(`검색 완료: '${keyword}' 관련 노드와 관계 레이어를 가상 필터링했습니다.`);
+        cyInstance.animate({ fit: { eles: activeSubnet, padding: 60 }, duration: 400 });
+        updateStatus(`검색 완료: '${keyword}' 연관 노드 외 물리적 마우스 클릭 간섭을 모두 무력화했습니다.`);
     }
 
-    // 데이터 상세 정보창 출력 (작업자 속성 UI 배치)
     function showDetails(data) {
         const container = document.getElementById('details');
         if (data.source) {
@@ -317,7 +457,8 @@
                 <div class="detail-item"><div class="detail-label">대상(저서/인물)</div><div class="detail-value">${data.target}</div></div>
                 <div class="detail-item"><div class="detail-label">태도 점수</div><div class="detail-value">${data.score}</div></div>
                 <div class="detail-item"><div class="detail-label">근거 문헌</div><div class="detail-value">${data.source_doc}</div></div>
-                <div class="detail-item"><div class="detail-label">데이터 작업자(태깅)</div><div class="detail-value" style="color:#1e3a8a; font-weight:600;">${data.worker}</div></div> <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
+                <div class="detail-item"><div class="detail-label">데이터 작업자(태깅)</div><div class="detail-value" style="color:#1e3a8a; font-weight:600;">${data.worker}</div></div>
+                <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
             `;
         } else {
             container.innerHTML = `
@@ -393,10 +534,14 @@
             updateStatus("그래프 탐색 상태가 초기화되었습니다.");
             document.getElementById('details').innerHTML = `
                 <h2>상세 정보 창</h2>
-                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
+                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
             `;
         }
     }
+
+    // 자바스크립트 DOM 조작 확장 함수 (구형 브라우저 안전 호환성 보완)
+    Element.prototype.addClass = function(className) { this.classList.add(className); return this; };
+    Element.prototype.removeClass = function(className) { this.classList.remove(className); return this; };
 
     function updateStatus(text) { document.getElementById('status').innerText = text; }
     window.onload = initializeGraphSystem;
