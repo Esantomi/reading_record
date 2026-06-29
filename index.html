@@ -2,110 +2,141 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>한국 문인 독서 이력 지식 네트워크 (견본)</title>
+    <title>한국 문인 독서 이력 아카이브 (파일럿)</title>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script type="text/javascript" src="data.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #fafafa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; background-color: #f9fafb;
         }
-        h1 { font-size: 20pt; color: #111827; margin-bottom: 5px; }
-        .container { display: block; margin: 0 auto; max-width: 1200px; }
-        /* 그래프가 그려지는 영역 */
-        #network-graph {
-            width: 100%;
-            height: 650px;
-            border: 1px solid #e5e7eb;
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        /* 2단 레이아웃 설정 */
+        #sidebar {
+            width: 35%; height: 100%; border-right: 1px solid #e5e7eb;
+            padding: 30px; box-sizing: border-box; overflow-y: auto; background-color: #ffffff;
         }
-        #info {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #eff6ff;
-            border-left: 4px solid #3b82f6;
-            font-size: 11pt;
-        }
+        #graph-container { width: 65%; height: 100%; position: relative; }
+        
+        /* 텍스트 스타일 정의 */
+        h1 { font-size: 18pt; color: #111827; margin-bottom: 20px; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 9pt; font-weight: bold; margin-bottom: 10px; }
+        .badge.writer { background-color: #dbeafe; color: #1e40af; }
+        .badge.book { background-color: #dcfce7; color: #166534; }
+        .desc { font-size: 11pt; line-height: 1.6; color: #374151; margin-bottom: 30px; }
+        .section-title { font-size: 12pt; font-weight: bold; color: #4b5563; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 10px; }
+        .relation-list { list-style: none; padding: 0; }
+        .relation-item { padding: 10px; background: #f3f4f6; margin-bottom: 8px; border-radius: 6px; font-size: 10.5pt; }
+        .relation-item a { color: #2563eb; font-weight: bold; text-decoration: none; }
+        .relation-item a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>한국 근현대 문인 독서 이력 지식 네트워크 (Demo)</h1>
-    <p style="color: #6b7280; margin-top: 0;">보유하신 TSV/CSV 데이터를 기반으로 구성한 인터랙티브 정적 프로토타입입니다.</p>
-    
-    <div id="info">💡 노드를 클릭하면 해당 문인이나 도서의 중심 네트워크를 탐색할 수 있습니다.</div>
-    <br>
-    
-    <div id="network-graph"></div>
+<div id="sidebar">
+    <div id="welcome-view">
+        <h1>한국 문인 독서 이력 온톨로지 파일럿</h1>
+        <p class="desc">우측 관계망 그래프에서 문인이나 책을 클릭하시면, 해당 개체의 상세 독서 이력 아카이브와 유기적 관계 네트워크를 실시간으로 탐색할 수 있습니다.</p>
+    </div>
+    <div id="detail-view" style="display: none;">
+        <span id="node-type" class="badge"></span>
+        <h1 id="node-name">개체 이름</h1>
+        <div id="node-desc" class="desc">상세 해제 내용이 들어갑니다.</div>
+        
+        <div class="section-title">연결된 관계망</div>
+        <ul id="node-relations" class="relation-list"></ul>
+    </div>
 </div>
 
+<div id="graph-container"></div>
+
 <script type="text/javascript">
-    // [중요] 갖고 계신 TSV/CSV 데이터 중 일부를 아래 형식(Nodes와 Edges)으로 변환해 매핑합니다.
-    // 데모용 예시 데이터입니다.
-    const rawNodes = [
-        { id: "writer_yi_sang", label: "이상 (李箱)", group: "writer" },
-        { id: "writer_kim_yu_jeong", label: "김유정 (金裕貞)", group: "writer" },
-        { id: "book_mujongi", label: "무정 (이광수 著)", group: "book" },
-        { id: "book_madame_bovary", label: "마담 보바리 (플로베르 著)", group: "book" },
-        { id: "book_science_text", label: "상대성원리 해설", group: "book" }
-    ];
+    const container = document.getElementById('graph-container');
+    let network = null;
 
-    const rawEdges = [
-        { from: "writer_yi_sang", to: "book_science_text", label: "READ" },
-        { from: "writer_yi_sang", to: "book_madame_bovary", label: "READ" },
-        { from: "writer_kim_yu_jeong", to: "book_madame_bovary", label: "READ" },
-        { from: "writer_kim_yu_jeong", to: "book_mujongi", label: "READ" },
-        { from: "writer_yi_sang", to: "writer_kim_yu_jeong", label: "FRIENDSHIP" } // 문인 간 관계도 가능
-    ];
-
-    // Vis.js용 데이터셋 생성 및 스타일 정의
-    const nodes = new vis.DataSet(rawNodes.map(node => {
-        return {
+    // 1. 전체 데이터 기반으로 초기 그래프 시각화 구축
+    function initGraph() {
+        const nodesArray = Object.values(LITERARY_DATA.nodes).map(node => ({
             id: node.id,
-            label: node.label,
-            shape: node.group === 'writer' ? 'ellipse' : 'box',
-            color: node.group === 'writer' ? { background: '#dbeafe', border: '#3b82f6' } : { background: '#dcfce7', border: '#22c55e' },
-            font: { size: 14, color: '#111827' },
-            borderWidth: 2
-        };
-    }));
+            label: node.name,
+            shape: node.type === 'WRITER' ? 'ellipse' : 'box',
+            color: node.type === 'WRITER' ? { background: '#dbeafe', border: '#3b82f6' } : { background: '#dcfce7', border: '#22c55e' }
+        }));
 
-    const edges = new vis.DataSet(rawEdges.map(edge => {
-        return {
+        const edgesArray = LITERARY_DATA.edges.map(edge => ({
             from: edge.from,
             to: edge.to,
             label: edge.label,
-            font: { size: 10, align: 'middle', color: '#9ca3af' },
-            color: { color: '#cbd5e1', highlight: '#3b82f6' },
-            arrows: edge.label === 'READ' ? 'to' : '' // 독서 이력은 화살표 표시
+            arrows: edge.label === 'READ' ? 'to' : ''
+        }));
+
+        const data = { nodes: new vis.DataSet(nodesArray), edges: new vis.DataSet(edgesArray) };
+        const options = {
+            physics: { barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 120 } },
+            interaction: { hover: true }
         };
-    }));
 
-    // 그래프 노출 옵션 설정
-    const container = document.getElementById('network-graph');
-    const data = { nodes: nodes, edges: edges };
-    const options = {
-        physics: {
-            barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150 }
-        },
-        interaction: { hover: true }
-    };
+        network = new vis.Network(container, data, options);
 
-    // 네트워크 그래프 초기화
-    const network = new vis.Network(container, data, options);
+        // 그래프의 노드를 클릭했을 때 주소창의 해시(#)를 바꿔 라우팅 발생시킴
+        network.on("click", function (params) {
+            if (params.nodes.length > 0) {
+                window.location.hash = params.nodes[0];
+            }
+        });
+    }
 
-    // 클릭 이벤트 리스너 인터랙션 추가
-    network.on("click", function (params) {
-        if (params.nodes.length > 0) {
-            const nodeId = params.nodes[0];
-            const clickedNode = nodes.get(nodeId);
-            document.getElementById('info').innerHTML = `선택된 노드: <strong>${clickedNode.label}</strong> (ID: ${nodeId})`;
+    // 2. 해시(#) 주소 변경을 감지하여 왼쪽 상세 화면을 바꿔주는 핵심 라우터 함수
+    function handleRoute() {
+        const nodeId = window.location.hash.replace('#', '');
+        const node = LITERARY_DATA.nodes[nodeId];
+
+        if (!node) {
+            document.getElementById('welcome-view').style.display = 'block';
+            document.getElementById('detail-view').style.display = 'none';
+            if (network) network.unselectNodes();
+            return;
         }
-    });
+
+        // 왼쪽 UI 데이터 바인딩 및 노출
+        document.getElementById('welcome-view').style.display = 'none';
+        document.getElementById('detail-view').style.display = 'block';
+        
+        const typeBadge = document.getElementById('node-type');
+        typeBadge.innerText = node.type === 'WRITER' ? '문인' : '도서/개념';
+        typeBadge.className = `badge ${node.type.toLowerCase()}`;
+        
+        document.getElementById('node-name').innerText = node.name;
+        document.getElementById('node-desc').innerText = node.description;
+
+        // 해당 노드와 관련된 연결 리스트 동적 생성
+        const relationsList = document.getElementById('node-relations');
+        relationsList.innerHTML = '';
+
+        LITERARY_DATA.edges.forEach(edge => {
+            if (edge.from === nodeId || edge.to === nodeId) {
+                const targetId = edge.from === nodeId ? edge.to : edge.from;
+                const targetNode = LITERARY_DATA.nodes[targetId];
+                
+                const li = document.createElement('li');
+                li.className = 'relation-item';
+                // 관계 리스트 내의 링크를 클릭해도 해시가 바뀌며 연쇄 탐색 가능
+                li.innerHTML = `<strong>[${edge.type}]</strong> <a href="#${targetId}">${targetNode.name}</a> <br><small style="color:#6b7280">출처: ${edge.source || '미상'}</small>`;
+                relationsList.appendChild(li);
+            }
+        });
+
+        // 그래프 상에서도 해당 노드가 하이라이트되도록 동기화
+        if (network) {
+            network.selectNodes([nodeId]);
+        }
+    }
+
+    // 이벤트 리스너 등록 및 초기화
+    window.addEventListener('hashchange', handleRoute);
+    window.onload = () => {
+        initGraph();
+        handleRoute(); // 새로고침 시 초기 해시 확인
+    };
 </script>
 </body>
 </html>
