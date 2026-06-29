@@ -2,54 +2,89 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>김기림 문단 네트워크 & 독서 이력 아카이브</title>
+    <title>김기림 문단 네트워크 & 독서 이력 아카이브 (검색 기능 탑재)</title>
+    <!-- Vis.js 네트워크 시각화 라이브러리 로드 -->
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <!-- 외부 데이터 파일 로드 -->
     <script type="text/javascript" src="data.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; background-color: #f8fafc;
             color: #334155;
         }
+        /* 2단 스플릿 레이아웃 */
         #sidebar {
             width: 38%; height: 100%; border-right: 1px solid #e2e8f0;
             padding: 35px; box-sizing: border-box; overflow-y: auto; background-color: #ffffff;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.02);
+            display: flex; flex-direction: column;
         }
         #graph-container { width: 62%; height: 100%; position: relative; background-color: #f1f5f9; }
-        h1 { font-size: 18pt; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 8px; }
+        
+        /* 검색창 / 쿼리 질의 섹션 */
+        .search-section {
+            margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0;
+        }
+        .search-label { font-size: 9.5pt; font-weight: 700; color: #475569; margin-bottom: 8px; display: block; }
+        .search-box {
+            width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1;
+            font-size: 10pt; box-sizing: border-box; outline: none; transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        
+        /* 뷰어 영역 */
+        .content-view { flex: 1; }
+        h1 { font-size: 18pt; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 8px; line-height: 1.3; }
         .subtitle { font-size: 10.5pt; color: #64748b; margin-bottom: 25px; }
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 8.5pt; font-weight: 700; margin-bottom: 12px; }
+        
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 8.5pt; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; }
         .badge.writer { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
         .badge.book { background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
         .badge.person { background-color: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
+        .badge.unknown { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        
         .desc { font-size: 11pt; line-height: 1.6; color: #475569; margin-bottom: 35px; word-break: keep-all; }
         .section-title { font-size: 12pt; font-weight: 700; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 15px; }
+        
         .relation-list { list-style: none; padding: 0; margin: 0; }
-        .relation-item { padding: 14px; background: #f8fafc; border: 1px solid #f1f5f9; margin-bottom: 10px; border-radius: 8px; font-size: 10pt; }
+        .relation-item { padding: 14px; background: #f8fafc; border: 1px solid #f1f5f9; margin-bottom: 10px; border-radius: 8px; font-size: 10pt; line-height: 1.5; }
         .relation-item a { color: #2563eb; font-weight: 700; text-decoration: none; }
+        .relation-item a:hover { text-decoration: underline; }
+        
         .rel-label { display: inline-block; font-size: 8.5pt; font-weight: 800; color: #64748b; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
         .source-text { font-size: 9pt; color: #64748b; margin-top: 4px; background: #ffffff; padding: 8px; border-left: 3px solid #cbd5e1; border-radius: 2px; font-style: italic; }
-        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; color: #166534; font-size: 10pt; }
+        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; color: #166534; font-size: 10pt; line-height: 1.5; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <div id="welcome-view">
-        <h1>김기림 문단 네트워크<br>온톨로지 아카이브</h1>
-        <p class="subtitle">연구 데이터 기반 파일럿 웹 서비스</p>
-        <div class="info-box">
-            👉 <strong>탐색 방법:</strong><br>
-            오른쪽 지형도에서 <strong>노드를 클릭</strong>하면 상세 정보 카드가 표출됩니다.
-        </div>
+    <!-- 쿼리 질의 섹션 -->
+    <div class="search-section">
+        <label class="search-label" for="searchNode">🔍 온톨로지 개체 검색 (인물/문헌 쿼리)</label>
+        <input type="text" id="searchNode" class="search-box" placeholder="예: 김기림, 파우스트, 엘리엇..." oninput="searchOntology()">
+        <div id="search-results" style="max-height: 150px; overflow-y: auto; margin-top: 5px; font-size: 9.5pt; background: #fff; border-radius: 4px; border: 1px solid #cbd5e1; display: none;"></div>
     </div>
-    
-    <div id="detail-view" style="display: none;">
-        <span id="node-type" class="badge"></span>
-        <h1 id="node-name">개체명</h1>
-        <div id="node-desc" class="desc">개체 설명</div>
-        <div class="section-title">연결된 이력 및 관계망 (Hop-1)</div>
-        <ul id="node-relations" class="relation-list"></ul>
+
+    <!-- 내용 출력 영역 -->
+    <div class="content-view">
+        <div id="welcome-view">
+            <h1>김기림 문단 네트워크<br>온톨로지 아카이브</h1>
+            <p class="subtitle">연구 데이터 기반 파일럿 웹 서비스</p>
+            <div class="info-box">
+                💡 상단의 <strong>검색창에 키워드를 입력</strong>하거나 우측 그래프 지형도에서 노드를 클릭해 지식망을 탐색해 보세요.
+            </div>
+        </div>
+        
+        <div id="detail-view" style="display: none;">
+            <span id="node-type" class="badge"></span>
+            <h1 id="node-name">개체명</h1>
+            <div id="node-desc" class="desc">개체 설명</div>
+            
+            <div class="section-title">연결된 이력 및 관계망 (Hop-1)</div>
+            <ul id="node-relations" class="relation-list"></ul>
+        </div>
     </div>
 </div>
 
@@ -58,57 +93,50 @@
 <script type="text/javascript">
     const container = document.getElementById('graph-container');
     let network = null;
+    let nodesDataSet = null;
 
+    // 1. 초기 그래프 로드 및 방어적 데이터 가공
     function initGraph() {
-        // [방어코드] 데이터 파일 확인 안전장치
         if (typeof LITERARY_DATA === 'undefined') {
-            console.error("data.js 파일을 찾을 수 없거나 데이터가 올바르지 않습니다.");
+            alert("data.js 데이터를 가져오지 못했습니다. 파일 위치를 확인하세요.");
             return;
         }
 
         const nodesArray = Object.values(LITERARY_DATA.nodes).map(node => {
-            let shape = 'ellipse';
-            let bgColor = '#dbeafe';
-            let borderColor = '#3b82f6';
-            
-            if (node.type === 'BOOK') {
-                shape = 'box'; bgColor = '#dcfce7'; borderColor = '#22c55e';
-            } else if (node.type === 'PERSON') {
-                shape = 'database'; bgColor = '#fdf2f8'; borderColor = '#ec4899';
-            }
+            let shape = 'ellipse'; let bgColor = '#dbeafe'; let borderColor = '#3b82f6';
+            if (node.type === 'BOOK') { shape = 'box'; bgColor = '#dcfce7'; borderColor = '#22c55e'; }
+            else if (node.type === 'PERSON') { shape = 'database'; bgColor = '#fdf2f8'; borderColor = '#ec4899'; }
 
             return {
-                id: node.id,
-                label: node.name,
-                shape: shape,
+                id: node.id, label: node.name, shape: shape,
                 color: { background: bgColor, border: borderColor, highlight: { background: '#fef08a', border: '#eab308' } },
-                font: { size: 13, color: '#1e293b' },
-                margin: 10
+                font: { size: 13, color: '#1e293b' }, margin: 10
             };
         });
 
-        // [방어코드] 만약 edges의 목적지 노드가 nodes에 없으면 강제로 빈 노드를 생성해 뻗지 않게 제어
+        // 엣지에 존재하나 노드 정의가 누락된 요소 처리 보완
         LITERARY_DATA.edges.forEach(edge => {
             if (!LITERARY_DATA.nodes[edge.from]) {
-                LITERARY_DATA.nodes[edge.from] = { id: edge.from, name: edge.from, type: "UNKNOWN", description: "미지정 개체" };
+                LITERARY_DATA.nodes[edge.from] = { id: edge.from, name: edge.from, type: "UNKNOWN", description: "데이터 내 명시적 식별 정보가 없는 개체입니다." };
                 nodesArray.push({ id: edge.from, label: edge.from, shape: 'ellipse' });
             }
             if (!LITERARY_DATA.nodes[edge.to]) {
-                LITERARY_DATA.nodes[edge.to] = { id: edge.to, name: edge.to, type: "UNKNOWN", description: "미지정 개체" };
+                LITERARY_DATA.nodes[edge.to] = { id: edge.to, name: edge.to, type: "UNKNOWN", description: "데이터 내 명시적 식별 정보가 없는 개체입니다." };
                 nodesArray.push({ id: edge.to, label: edge.to, shape: 'ellipse' });
             }
         });
 
-        const edgesArray = LITERARY_DATA.edges.map(edge => ({
+        nodesDataSet = new vis.DataSet(nodesArray);
+        const edgesDataSet = new vis.DataSet(LITERARY_DATA.edges.map(edge => ({
             from: edge.from, to: edge.to, label: edge.label,
             font: { size: 9, color: '#64748b', align: 'middle' },
             arrows: 'to', color: { color: '#cbd5e1', highlight: '#3b82f6' },
             smooth: { type: 'cubicBezier', roundness: 0.5 }
-        }));
+        })));
 
-        const data = { nodes: new vis.DataSet(nodesArray), edges: new vis.DataSet(edgesArray) };
+        const data = { nodes: nodesDataSet, edges: edgesDataSet };
         const options = {
-            physics: { barnesHut: { gravitationalConstant: -3000, centralGravity: 0.2, springLength: 150 } },
+            physics: { barnesHut: { gravitationalConstant: -3500, centralGravity: 0.25, springLength: 140 } },
             interaction: { hover: true }
         };
 
@@ -118,6 +146,41 @@
         });
     }
 
+    // 2. 실시간 쿼리 질의 엔진 구현
+    function searchOntology() {
+        const query = document.getElementById('searchNode').value.trim().toLowerCase();
+        const resultsDiv = document.getElementById('search-results');
+        
+        if (!query) { resultsDiv.style.display = 'none'; return; }
+        
+        resultsDiv.innerHTML = '';
+        let matchCount = 0;
+
+        Object.values(LITERARY_DATA.nodes).forEach(node => {
+            if (node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)) {
+                matchCount++;
+                const item = document.createElement('div');
+                item.style.padding = '8px 12px';
+                item.style.cursor = 'pointer';
+                item.style.borderBottom = '1px solid #f1f5f9';
+                item.innerHTML = `<strong>${node.name}</strong> <span style="font-size:8pt; color:#94a3b8;">(${node.type})</span>`;
+                item.onclick = () => {
+                    window.location.hash = node.id;
+                    resultsDiv.style.display = 'none';
+                    document.getElementById('searchNode').value = node.name;
+                };
+                resultsDiv.appendChild(item);
+            }
+        });
+
+        if (matchCount > 0) { resultsDiv.style.display = 'block'; }
+        else {
+            resultsDiv.innerHTML = '<div style="padding:8px 12px; color:#94a3b8;">일치하는 개체가 없습니다.</div>';
+            resultsDiv.style.display = 'block';
+        }
+    }
+
+    // 3. 해시 변경에 따른 라우팅 화면 동기화
     function handleRoute() {
         const nodeId = window.location.hash.replace('#', '');
         const node = LITERARY_DATA.nodes[nodeId];
@@ -136,6 +199,7 @@
         let typeName = '연구자/문인';
         if (node.type === 'BOOK') typeName = '도서/문헌';
         if (node.type === 'PERSON') typeName = '해외인물/개념';
+        if (node.type === 'UNKNOWN') typeName = '미지정 개체';
         
         typeBadge.innerText = typeName;
         typeBadge.className = `badge ${node.type.toLowerCase()}`;
@@ -165,7 +229,11 @@
             }
         });
 
-        if (network) network.selectNodes([nodeId]);
+        // 그래프 뷰포트를 해당 노드로 부드럽게 초점 이동(Focus)
+        if (network) {
+            network.selectNodes([nodeId]);
+            network.focus(nodeId, { scale: 1.1, animation: { duration: 400 } });
+        }
     }
 
     window.addEventListener('hashchange', handleRoute);
