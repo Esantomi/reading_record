@@ -72,6 +72,7 @@
             <div class="legend-item"><span class="dot" style="background-color: #1d4ed8;"></span> 연구 대상자(독자)</div>
             <div class="legend-item"><span class="dot" style="background-color: #0f766e; border-radius: 2px;"></span> 언급/독서 대상 (저서 및 인물)</div>
             <div class="legend-item"><span class="dot" style="background-color: #e11d48;"></span> 선택/하이라이트 상태</div>
+            <div class="legend-item" style="margin-left:10px; color:#64748b;">* 태도 점수(1~5점)가 높을수록 선이 굵게 표시됩니다.</div>
         </div>
     </header>
 
@@ -136,6 +137,11 @@
                 const target = row['저서(문헌)'];
                 const relation = row['술어(관계)'];
                 
+                // 태도 점수 수치화 파싱 (비어있으면 기본값 2px)
+                const rawScore = row['태도(점수)'];
+                const parsedScore = (rawScore && !isNaN(rawScore)) ? parseFloat(rawScore) : null;
+                const edgeWidth = parsedScore ? parsedScore : 2;
+
                 if(source && target) {
                     addNode(source, 'Reader');
                     addNode(target, 'Target');
@@ -145,10 +151,11 @@
                             source: source.trim(),
                             target: target.trim(),
                             relation: relation ? relation.trim() : 'refer to',
-                            score: row['태도(점수)'] || 'N/A',
+                            score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['근거 문장'] || '원문 없음',
-                            dataType: 'Mention'
+                            dataType: 'Mention',
+                            weight: edgeWidth /* 매핑된 두께 변수 바인딩 */
                         }
                     });
                 }
@@ -159,6 +166,10 @@
                 const target = row['저서(문헌)'];
                 const relation = row['술어(관계)'];
                 
+                const rawScore = row['태도(점수)'];
+                const parsedScore = (rawScore && !isNaN(rawScore)) ? parseFloat(rawScore) : null;
+                const edgeWidth = parsedScore ? parsedScore : 2;
+
                 if(source && target) {
                     addNode(source, 'Reader');
                     addNode(target, 'Target');
@@ -168,10 +179,11 @@
                             source: source.trim(),
                             target: target.trim(),
                             relation: relation ? relation.trim() : 'read',
-                            score: row['태도(점수)'] || 'N/A',
+                            score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['추정근거'] || '원문 없음',
-                            dataType: 'Reading'
+                            dataType: 'Reading',
+                            weight: edgeWidth
                         }
                     });
                 }
@@ -192,7 +204,7 @@
                             'background-color': '#64748b',
                             'width': '65px', 'height': '65px',
                             'text-wrap': 'wrap', 'text-max-width': '60px',
-                            'display': 'element' /* 기본값 활성화 */
+                            'display': 'element'
                         }
                     },
                     {
@@ -206,7 +218,7 @@
                     {
                         selector: 'edge',
                         style: {
-                            'width': 3, 
+                            'width': 'data(weight)', /* ★ 핵심: 매핑한 두께 데이터를 가져와 유동적으로 부여 */
                             'line-color': '#cbd5e1',
                             'target-arrow-color': '#cbd5e1',
                             'target-arrow-shape': 'triangle',
@@ -229,11 +241,10 @@
                             'width': '75px', 'height': '75px'
                         }
                     },
-                    /* ★ 물리적 필터링 거름망 클래스 정의 */
                     {
                         selector: '.faded',
                         style: {
-                            'display': 'none' /* 투명화가 아닌 물리적 제거 방식을 택하여 히트박스를 완벽 소멸시킵니다 */
+                            'display': 'none'
                         }
                     }
                 ],
@@ -244,7 +255,7 @@
                 showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (물리 필터링 적용)`);
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (태도 점수별 두께 가중치 반영)`);
 
         } catch (error) {
             updateStatus(`오류 발생: ${error.message}`);
@@ -264,7 +275,6 @@
 
         updateStatus(`'${keyword}' 관련 네트워크 추출 중...`);
 
-        // 1. 키워드를 포함하는 중심 노드 검색
         const matchedNodes = cyInstance.nodes().filter(node => {
             return node.data('label').toLowerCase().includes(keyword.toLowerCase());
         });
@@ -275,29 +285,22 @@
             return;
         }
 
-        // 2. 중심 노드에 직결된 선들과 상대편 노드들 추출
         const connectedEdges = matchedNodes.connectedEdges();
         const neighborhoodNodes = connectedEdges.connectedNodes();
-
-        // 3. 유지할 서브넷 범위 지정
         const activeSubnet = matchedNodes.union(connectedEdges).union(neighborhoodNodes);
 
-        // 4. 먼저 전체 요소를 숨김('display': 'none') 처리하여 클릭 간섭 요소를 제거
         cyInstance.elements().addClass('faded');
-        
-        // 5. 선택된 연관 데이터 네트워크만 숨김 해제하여 물리 영역 복구
         activeSubnet.removeClass('faded');
 
         cyInstance.elements().unselect();
         matchedNodes.select();
 
-        // 6. 활성화된 요소들 기준으로만 화면 크기 재조정
         cyInstance.animate({
             fit: { eles: activeSubnet, padding: 60 },
             duration: 400
         });
 
-        updateStatus(`검색 완료: '${keyword}' 관련 노드와 엣지만 남기고 물리적인 클릭 간섭을 모두 차단했습니다.`);
+        updateStatus(`검색 완료: '${keyword}' 관련 노드와 가중치 엣지만 물리 필터링했습니다.`);
     }
 
     function showDetails(data) {
@@ -380,7 +383,7 @@
     function resetVisualization() {
         if (cyInstance) {
             cyInstance.elements().unselect();
-            cyInstance.elements().removeClass('faded'); /* display: element 로 자동 복구 */
+            cyInstance.elements().removeClass('faded');
             cyInstance.animate({ fit: { padding: 40 }, duration: 400 });
             document.getElementById('localKeyword').value = "";
             updateStatus("그래프 탐색 상태가 초기화되었습니다.");
