@@ -192,8 +192,7 @@
                             'background-color': '#64748b',
                             'width': '65px', 'height': '65px',
                             'text-wrap': 'wrap', 'text-max-width': '60px',
-                            'transition-property': 'opacity', 'transition-duration': '0.1s',
-                            'z-index': 100 /* 기본 노드 레이어 높음 */
+                            'display': 'element' /* 기본값 활성화 */
                         }
                     },
                     {
@@ -207,7 +206,7 @@
                     {
                         selector: 'edge',
                         style: {
-                            'width': 3, /* 선 두께를 소폭 늘려 마우스 조준 범위 최적화 */
+                            'width': 3, 
                             'line-color': '#cbd5e1',
                             'target-arrow-color': '#cbd5e1',
                             'target-arrow-shape': 'triangle',
@@ -216,19 +215,7 @@
                             'font-size': '9px',
                             'color': '#475569',
                             'text-rotation': 'autorotate',
-                            'transition-property': 'opacity', 'transition-duration': '0.1s',
-                            'z-index': 50 /* 기본 엣지 레이어 중간 */
-                        }
-                    },
-                    /* 하이라이트/포커스 상태의 노드 및 엣지 세트 */
-                    {
-                        selector: '.focused',
-                        style: {
-                            'z-index': 9999,      /* ★ 중요: 검색 활성화된 요소들을 화면 최상단으로 끌어올림 */
-                            'opacity': 1,
-                            'line-opacity': 1,
-                            'text-opacity': 1,
-                            'pointer-events': 'auto'
+                            'display': 'element'
                         }
                     },
                     {
@@ -239,20 +226,14 @@
                             'target-arrow-color': '#e11d48',
                             'color': '#ffffff',
                             'font-weight': 'bold',
-                            'width': '75px', 'height': '75px',
-                            'z-index': 10000      /* 클릭 선택된 요소는 우주 최상단 배정 */
+                            'width': '75px', 'height': '75px'
                         }
                     },
-                    /* 배경화되어 숨겨진 비선택 요소 제어 규칙 */
+                    /* ★ 물리적 필터링 거름망 클래스 정의 */
                     {
                         selector: '.faded',
                         style: {
-                            'opacity': 0,           /* 완전히 투명화하여 시각적 간섭 제거 */
-                            'text-opacity': 0,
-                            'background-opacity': 0,
-                            'line-opacity': 0,
-                            'z-index': 1,           /* ★ 중요: 투명해진 노드는 레이어를 바닥 바닥(1)으로 내림 */
-                            'pointer-events': 'none' /* 마우스 클릭 이벤트를 원천 차단하여 완전 통과시킴 */
+                            'display': 'none' /* 투명화가 아닌 물리적 제거 방식을 택하여 히트박스를 완벽 소멸시킵니다 */
                         }
                     }
                 ],
@@ -263,7 +244,7 @@
                 showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (레이어 겹침 간섭 수정)`);
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (물리 필터링 적용)`);
 
         } catch (error) {
             updateStatus(`오류 발생: ${error.message}`);
@@ -271,7 +252,7 @@
         }
     }
 
-    // 로컬 필터링 검색 엔진 (동적 클래스 토글 방식 고도화)
+    // 로컬 검색 필터링 엔진
     function executeLocalSearch() {
         const keyword = document.getElementById('localKeyword').value.trim();
         if (!keyword) {
@@ -283,37 +264,40 @@
 
         updateStatus(`'${keyword}' 관련 네트워크 추출 중...`);
 
+        // 1. 키워드를 포함하는 중심 노드 검색
         const matchedNodes = cyInstance.nodes().filter(node => {
             return node.data('label').toLowerCase().includes(keyword.toLowerCase());
         });
 
         if (matchedNodes.length === 0) {
             updateStatus(`'${keyword}'에 매칭되는 노드가 없습니다.`);
-            cyInstance.elements().addClass('faded').removeClass('focused');
+            cyInstance.elements().addClass('faded');
             return;
         }
 
+        // 2. 중심 노드에 직결된 선들과 상대편 노드들 추출
         const connectedEdges = matchedNodes.connectedEdges();
         const neighborhoodNodes = connectedEdges.connectedNodes();
 
-        // 필터링 메인 서브넷 지정
+        // 3. 유지할 서브넷 범위 지정
         const activeSubnet = matchedNodes.union(connectedEdges).union(neighborhoodNodes);
 
-        // 전체 상태값 초기화 후 분리 적용
-        cyInstance.elements().removeClass('focused').addClass('faded');
+        // 4. 먼저 전체 요소를 숨김('display': 'none') 처리하여 클릭 간섭 요소를 제거
+        cyInstance.elements().addClass('faded');
         
-        // 서브넷 내부 요소들은 투명화 해제 및 최상단 z-index 레이어 적용
-        activeSubnet.removeClass('faded').addClass('focused');
+        // 5. 선택된 연관 데이터 네트워크만 숨김 해제하여 물리 영역 복구
+        activeSubnet.removeClass('faded');
 
         cyInstance.elements().unselect();
         matchedNodes.select();
 
+        // 6. 활성화된 요소들 기준으로만 화면 크기 재조정
         cyInstance.animate({
             fit: { eles: activeSubnet, padding: 60 },
             duration: 400
         });
 
-        updateStatus(`검색 완료: '${keyword}' 노드 및 관계 레이어를 가상 최상단으로 정렬했습니다.`);
+        updateStatus(`검색 완료: '${keyword}' 관련 노드와 엣지만 남기고 물리적인 클릭 간섭을 모두 차단했습니다.`);
     }
 
     function showDetails(data) {
@@ -345,7 +329,7 @@
         if (!query) { alert("질문 내용을 입력해 주세요."); return; }
 
         updateStatus("AI가 자연어를 분석하여 그래프 검색 쿼리를 수립 중입니다...");
-        cyInstance.elements().removeClass('faded').removeClass('focused');
+        cyInstance.elements().removeClass('faded');
 
         const systemInstruction = `
             You are an expert assistant translating natural language into Cytoscape.js selectors for a Korean Literary History Database.
@@ -396,7 +380,7 @@
     function resetVisualization() {
         if (cyInstance) {
             cyInstance.elements().unselect();
-            cyInstance.elements().removeClass('faded').removeClass('focused');
+            cyInstance.elements().removeClass('faded'); /* display: element 로 자동 복구 */
             cyInstance.animate({ fit: { padding: 40 }, duration: 400 });
             document.getElementById('localKeyword').value = "";
             updateStatus("그래프 탐색 상태가 초기화되었습니다.");
