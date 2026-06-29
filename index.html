@@ -18,22 +18,30 @@
         header { border-bottom: 2px solid #cbd5e1; padding-bottom: 10px; }
         h1 { margin: 0; font-size: 22px; color: #0f172a; }
         
-        .config-panel, .query-panel {
+        .config-panel, .query-panel, .local-search-panel {
             background: white; padding: 15px; border-radius: 8px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 768px) { .panel-grid { grid-template-columns: 1fr; } }
+
         label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 6px; color: #475569; }
         input[type="password"], input[type="text"] {
             width: 100%; padding: 10px; border: 1px solid #cbd5e1;
             border-radius: 6px; font-size: 14px; margin-bottom: 8px;
         }
+        .btn-group { display: flex; gap: 5px; }
         button {
             background-color: #2563eb; color: white; border: none; padding: 10px 16px;
-            border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px; margin-right: 5px;
+            border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;
         }
         button:hover { background-color: #1d4ed8; }
+        .btn-local { background-color: #0d9488; }
+        .btn-local:hover { background-color: #0f766e; }
+        .btn-reset { background-color: #475569; }
+        .btn-reset:hover { background-color: #334155; }
         
-        /* 메인 레이아웃: 그래프 영역과 우측 정보창 분할 */
+        /* 메인 레이아웃 */
         .main-layout { display: flex; gap: 15px; height: 650px; }
         #cy {
             flex: 3; background: white; border: 1px solid #e2e8f0; 
@@ -67,37 +75,44 @@
         </div>
     </header>
 
-    <div class="config-panel">
-        <label for="apiKey">OpenAI API Key 입력</label>
-        <input type="password" id="apiKey" placeholder="sk-proj-..." />
+    <div class="panel-grid">
+        <div class="local-search-panel">
+            <label for="localKeyword">무료 로컬 키워드 검색 (인물 / 저서 명칭)</label>
+            <input type="text" id="localKeyword" placeholder="예: 랭보, 엘리엇, 무정 (엔터 가능)" onkeyup="if(event.keyCode==13) executeLocalSearch()" />
+            <div class="btn-group">
+                <button class="btn-local" onclick="executeLocalSearch()">포커스 검색</button>
+                <button class="btn-reset" onclick="resetVisualization()">전체 초기화</button>
+            </div>
+        </div>
+
+        <div class="query-panel">
+            <label for="apiKey">OpenAI API Key (선택사항)</label>
+            <input type="password" id="apiKey" placeholder="sk-proj-..." style="padding:6px; font-size:12px; margin-bottom:4px;"/>
+            <label for="naturalQuery">AI 자연어 복합 질의</label>
+            <input type="text" id="naturalQuery" placeholder="예: 'criticize' 관계만 보여줘, 근거 문헌에 '미국'이 들어가는 선 선택해줘" />
+            <button onclick="executeNaturalLanguageQuery()">AI 질의 실행</button>
+        </div>
     </div>
 
-    <div class="query-panel">
-        <label for="naturalQuery">자연어 탐색 및 질의</label>
-        <input type="text" id="naturalQuery" placeholder="예: '랭보'를 읽은 기록 찾아줘, 'criticize'(비판) 관계만 보여줘, 근거 문헌에 '미국'이 들어가는 선 선택해줘" />
-        <button onclick="executeNaturalLanguageQuery()">질의 실행 (AI)</button>
-        <button onclick="resetVisualization()" style="background-color: #475569;">전체 초기화</button>
-        <div id="status" class="status-msg"></div>
-    </div>
+    <div id="status" class="status-msg">시스템 초기화 중...</div>
 
     <div class="main-layout">
         <div id="cy"></div>
         
         <div class="details-panel" id="details">
             <h2>상세 정보 창</h2>
-            <p style="color: #94a3b8; font-size: 13px;">그래프의 노드(원/사각)나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
+            <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
         </div>
     </div>
 </div>
 
 <script>
     let cyInstance = null;
-    // 브라우저 캐싱용 맵 구조
     let nodeLabels = new Set();
 
     // 1. 파일 로드 및 원본 데이터 기반 자바스크립트 그래프 모델 동적 생성
     async function initializeGraphSystem() {
-        updateStatus("서버로부터 언급 이력 및 독서 이력 CSV 데이터를 불러오는 중...");
+        updateStatus("서버로부터 CSV 데이터를 불러오는 중...");
         try {
             const [mentionRes, readingRes] = await Promise.all([
                 fetch('data/mention_data.csv').then(res => { if(!res.ok) throw new Error("mention_data.csv 로드 실패"); return res.text(); }),
@@ -109,7 +124,6 @@
 
             const elements = [];
 
-            // 안전한 노드 추가 함수
             function addNode(name, type) {
                 if(!name) return;
                 const trimmed = name.trim();
@@ -119,7 +133,7 @@
                 }
             }
 
-            // A. 언급 이력 데이터 파싱
+            // 언급 이력 데이터 파싱
             mentionData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -143,7 +157,7 @@
                 }
             });
 
-            // B. 독서 이력 데이터 파싱
+            // 독서 이력 데이터 파싱
             readingData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -167,7 +181,6 @@
                 }
             });
 
-            // Cytoscape 엔진 가동
             cyInstance = cytoscape({
                 container: document.getElementById('cy'),
                 elements: elements,
@@ -182,7 +195,8 @@
                             'color': '#ffffff',
                             'background-color': '#64748b',
                             'width': '65px', 'height': '65px',
-                            'text-wrap': 'wrap', 'text-max-width': '60px'
+                            'text-wrap': 'wrap', 'text-max-width': '60px',
+                            'transition-property': 'opacity', 'transition-duration': '0.2s'
                         }
                     },
                     {
@@ -191,7 +205,7 @@
                     },
                     {
                         selector: 'node[type="Target"]',
-                        style: { 'background-color': '#0f766e', 'shape': 'round-rectangle', 'color': '#ffffff' }
+                        style: { 'background-color': '#0f766e', 'shape': 'round-rectangle' }
                     },
                     {
                         selector: 'edge',
@@ -200,11 +214,12 @@
                             'line-color': '#cbd5e1',
                             'target-arrow-color': '#cbd5e1',
                             'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier', /* 중복 관계선 곡선 자동 분리 */
+                            'curve-style': 'bezier',
                             'label': 'data(relation)',
                             'font-size': '9px',
                             'color': '#475569',
-                            'text-rotation': 'autorotate'
+                            'text-rotation': 'autorotate',
+                            'transition-property': 'opacity', 'transition-duration': '0.2s'
                         }
                     },
                     {
@@ -217,39 +232,93 @@
                             'font-weight': 'bold',
                             'width': '75px', 'height': '75px'
                         }
+                    },
+                    /* 검색 필터링 시 비선택 요소를 흐리게 만들기 위한 스타일 클래스 */
+                    {
+                        selector: '.faded',
+                        style: {
+                            'opacity': 0.08,
+                            'text-opacity': 0,
+                            'background-opacity': 0.1,
+                            'line-opacity': 0.05
+                        }
                     }
                 ],
                 layout: { name: 'cose', padding: 40, idealEdgeLength: 100 }
             });
 
-            // 이벤트 바인딩: 오브젝트 클릭 시 우측 상세 보기창 업데이트
             cyInstance.on('tap', 'node, edge', function(evt){
-                const item = evt.target;
-                showDetails(item.data());
+                showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 및 이력 데이터를 결합했습니다.`);
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (API 없이 로컬 검색 가능)`);
 
         } catch (error) {
-            updateStatus(`오류가 발생했습니다: ${error.message}`);
+            updateStatus(`오류 발생: ${error.message}`);
             console.error(error);
         }
     }
 
-    // 데이터 메타 속성 시각화 창 처리 함수
+    // [추가 기능] API 연결 없는 로컬 필터링 검색 엔진
+    function executeLocalSearch() {
+        const keyword = document.getElementById('localKeyword').value.trim();
+        if (!keyword) {
+            resetVisualization();
+            return;
+        }
+
+        if (!cyInstance) return;
+
+        updateStatus(`'${keyword}' 관련 네트워크 추출 중...`);
+
+        // 1. 키워드를 포함하는 노드 탐색 (대소문자 구분 없음)
+        const matchedNodes = cyInstance.nodes().filter(node => {
+            return node.data('label').toLowerCase().includes(keyword.toLowerCase());
+        });
+
+        if (matchedNodes.length === 0) {
+            updateStatus(`'${keyword}'에 매칭되는 노드가 없습니다.`);
+            cyInstance.elements().addClass('faded');
+            return;
+        }
+
+        // 2. 해당 노드들과 직접 연결된 엣지(간선) 및 인접 노드 확보
+        const connectedEdges = matchedNodes.connectedEdges();
+        const neighborhoodNodes = connectedEdges.connectedNodes();
+
+        // 3. 필터링 대상이 되는 전체 활성 개체 그룹 정의
+        const activeSubnet = matchedNodes.union(connectedEdges).union(neighborhoodNodes);
+
+        // 4. 나머지 요소들은 흐리게 처리(faded), 선택된 서브넷은 선명하게 보존
+        cyInstance.elements().addClass('faded');
+        activeSubnet.removeClass('faded');
+
+        // 5. 검색된 중심 노드들을 붉은색 선택 상태로 변환 및 포커싱
+        cyInstance.elements().unselect();
+        matchedNodes.select();
+
+        cyInstance.animate({
+            fit: { eles: activeSubnet, padding: 60 },
+            duration: 400
+        });
+
+        updateStatus(`검색 완료: '${keyword}' 노드 및 연결된 엣지들을 하이라이트했습니다.`);
+    }
+
+    // 데이터 상세 정보창 출력
     function showDetails(data) {
         const container = document.getElementById('details');
-        if (data.source) { // 간선(Edge)인 경우
+        if (data.source) {
             container.innerHTML = `
                 <h2>관계 이력 상세</h2>
                 <div class="detail-item"><div class="detail-label">독자(인물)</div><div class="detail-value">${data.source}</div></div>
-                <div class="detail-item"><div class="detail-label">술어(관계)</div><div class="detail-value">${data.relation} (출처: ${data.dataType})</div></div>
+                <div class="detail-item"><div class="detail-label">술어(관계)</div><div class="detail-value">${data.relation} (${data.dataType})</div></div>
                 <div class="detail-item"><div class="detail-label">대상(저서/인물)</div><div class="detail-value">${data.target}</div></div>
                 <div class="detail-item"><div class="detail-label">태도 점수</div><div class="detail-value">${data.score}</div></div>
-                <div class="detail-item"><div class="detail-label">근거 문헌(출처 내용)</div><div class="detail-value">${data.source_doc}</div></div>
+                <div class="detail-item"><div class="detail-label">근거 문헌</div><div class="detail-value">${data.source_doc}</div></div>
                 <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
             `;
-        } else { // 정점(Node)인 경우
+        } else {
             container.innerHTML = `
                 <h2>개체 정보</h2>
                 <div class="detail-item"><div class="detail-label">이름 / 명칭</div><div class="detail-value" style="font-weight:bold; font-size:15px;">${data.label}</div></div>
@@ -258,35 +327,22 @@
         }
     }
 
-    // 2. OpenAI 인터페이스를 활용한 자연어 처리부
+    // OpenAI 자연어 처리부
     async function executeNaturalLanguageQuery() {
         const apiKey = document.getElementById('apiKey').value.trim();
         const query = document.getElementById('naturalQuery').value.trim();
 
-        if (!apiKey) { alert("상단의 OpenAI API Key를 입력해 주세요."); return; }
+        if (!apiKey) { alert("OpenAI API Key를 입력해 주세요."); return; }
         if (!query) { alert("질문 내용을 입력해 주세요."); return; }
 
         updateStatus("AI가 자연어를 분석하여 그래프 검색 쿼리를 수립 중입니다...");
+        cyInstance.elements().removeClass('faded'); // 덮어쓰기 전 리셋
 
         const systemInstruction = `
             You are an expert assistant translating natural language into Cytoscape.js selectors for a Korean Literary History Database.
-            
-            Database Schema Specifications:
-            - Node Attributes: 'id', 'label' (e.g., '김기림', '랭보', '악의 꽃'), 'type' ('Reader' or 'Target')
-            - Edge Attributes: 
-               * 'relation' (Values: 'refer to', 'read', 'criticize', 'cite', 'translate')
-               * 'score' (Attitude score)
-               * 'source_doc' (Source text title)
-               * 'evidence' (Context sentences containing keywords)
-               * 'dataType' ('Mention' or 'Reading')
-
-            Output Rules:
-            1. Return ONLY a valid JSON with a "selector" key. 
-            2. Do not wrap the JSON in markdown code blocks.
-            3. Use data operators correctly:
-               - To match labels: node[label = '랭보']
-               - To match relations: edge[relation = 'criticize']
-               - To perform partial string matches (contains): edge[source_doc *= '미국'] or edge[evidence *= '주의']
+            Node Attributes: 'id', 'label', 'type' ('Reader' or 'Target')
+            Edge Attributes: 'relation', 'score', 'source_doc', 'evidence', 'dataType'
+            Output Rules: Return ONLY JSON with a "selector" key. No markdown blocks.
         `;
 
         try {
@@ -304,55 +360,45 @@
                 })
             });
 
-            if(!response.ok) {
-                const errorLog = await response.json();
-                throw new Error(errorLog.error?.message || "API 통신 장애");
-            }
+            if(!response.ok) throw new Error("API 통신 장애");
 
             const data = await response.json();
             const result = JSON.parse(data.choices[0].message.content.trim());
             const targetSelector = result.selector;
 
-            updateStatus(`분석된 컴포넌트 셀렉터: ${targetSelector}`);
+            updateStatus(`생성된 셀렉터: ${targetSelector}`);
 
             if (cyInstance && targetSelector) {
                 cyInstance.elements().unselect();
                 const matched = cyInstance.filter(targetSelector);
 
                 if(matched.length === 0) {
-                    updateStatus(`검색에 매칭되는 데이터 노드나 선이 존재하지 않습니다: ${targetSelector}`);
+                    updateStatus(`검색 결과가 없습니다: ${targetSelector}`);
                 } else {
                     matched.select();
-                    // 연관 관계 가독성을 위해 선택된 개체들과 직접 연결된 요소들도 함께 하이라이트 확장 유도
-                    matched.neighborhood().nodes().addClass('highlighted'); 
-                    
-                    cyInstance.animate({
-                        fit: { eles: matched, padding: 60 },
-                        duration: 400
-                    });
+                    cyInstance.animate({ fit: { eles: matched, padding: 60 }, duration: 400 });
                 }
             }
-
         } catch (error) {
             updateStatus(`질의 번역 에러: ${error.message}`);
-            console.error(error);
         }
     }
 
     function resetVisualization() {
         if (cyInstance) {
             cyInstance.elements().unselect();
+            cyInstance.elements().removeClass('faded');
             cyInstance.animate({ fit: { padding: 40 }, duration: 400 });
+            document.getElementById('localKeyword').value = "";
             updateStatus("그래프 탐색 상태가 초기화되었습니다.");
             document.getElementById('details').innerHTML = `
                 <h2>상세 정보 창</h2>
-                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드(원/사각)나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
+                <p style="color: #94a3b8; font-size: 13px;">그래프의 노드나 간선(선)을 클릭하면 메타데이터와 근거 원문이 이곳에 표시됩니다.</p>
             `;
         }
     }
 
     function updateStatus(text) { document.getElementById('status').innerText = text; }
-
     window.onload = initializeGraphSystem;
 </script>
 </body>
