@@ -132,12 +132,12 @@
                 }
             }
 
+            // 언급 이력 데이터 파싱
             mentionData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
                 const relation = row['술어(관계)'];
                 
-                // 태도 점수 수치화 파싱 (비어있으면 기본값 2px)
                 const rawScore = row['태도(점수)'];
                 const parsedScore = (rawScore && !isNaN(rawScore)) ? parseFloat(rawScore) : null;
                 const edgeWidth = parsedScore ? parsedScore : 2;
@@ -154,13 +154,15 @@
                             score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['근거 문장'] || '원문 없음',
+                            worker: row['작업자'] || '미기재', /* ★ 언급이력 작업자 파싱 추가 */
                             dataType: 'Mention',
-                            weight: edgeWidth /* 매핑된 두께 변수 바인딩 */
+                            weight: edgeWidth
                         }
                     });
                 }
             });
 
+            // 독서 이력 데이터 파싱
             readingData.forEach((row, idx) => {
                 const source = row['독자(인물)'];
                 const target = row['저서(문헌)'];
@@ -182,6 +184,7 @@
                             score: parsedScore || 'N/A',
                             source_doc: row['근거(문헌)'] || '미기재',
                             evidence: row['추정근거'] || '원문 없음',
+                            worker: row['작업자'] || '미기재', /* ★ 독서이력 작업자 파싱 추가 */
                             dataType: 'Reading',
                             weight: edgeWidth
                         }
@@ -218,7 +221,7 @@
                     {
                         selector: 'edge',
                         style: {
-                            'width': 'data(weight)', /* ★ 핵심: 매핑한 두께 데이터를 가져와 유동적으로 부여 */
+                            'width': 'data(weight)',
                             'line-color': '#cbd5e1',
                             'target-arrow-color': '#cbd5e1',
                             'target-arrow-shape': 'triangle',
@@ -255,7 +258,7 @@
                 showDetails(evt.target.data());
             });
 
-            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (태도 점수별 두께 가중치 반영)`);
+            updateStatus(`로딩 완료: 총 인물/문헌 ${nodeLabels.size}개 개체 연결 완료 (작업자 추적 태그 추가)`);
 
         } catch (error) {
             updateStatus(`오류 발생: ${error.message}`);
@@ -300,9 +303,10 @@
             duration: 400
         });
 
-        updateStatus(`검색 완료: '${keyword}' 관련 노드와 가중치 엣지만 물리 필터링했습니다.`);
+        updateStatus(`검색 완료: '${keyword}' 관련 노드와 관계 레이어를 가상 필터링했습니다.`);
     }
 
+    // 데이터 상세 정보창 출력 (작업자 속성 UI 배치)
     function showDetails(data) {
         const container = document.getElementById('details');
         if (data.source) {
@@ -313,7 +317,7 @@
                 <div class="detail-item"><div class="detail-label">대상(저서/인물)</div><div class="detail-value">${data.target}</div></div>
                 <div class="detail-item"><div class="detail-label">태도 점수</div><div class="detail-value">${data.score}</div></div>
                 <div class="detail-item"><div class="detail-label">근거 문헌</div><div class="detail-value">${data.source_doc}</div></div>
-                <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
+                <div class="detail-item"><div class="detail-label">데이터 작업자(태깅)</div><div class="detail-value" style="color:#1e3a8a; font-weight:600;">${data.worker}</div></div> <div class="detail-item"><div class="detail-label">기록 원문 / 추정 근거</div><div class="detail-value" style="font-size:12px; line-height:1.4; color:#1e293b;">${data.evidence}</div></div>
             `;
         } else {
             container.innerHTML = `
@@ -337,7 +341,7 @@
         const systemInstruction = `
             You are an expert assistant translating natural language into Cytoscape.js selectors for a Korean Literary History Database.
             Node Attributes: 'id', 'label', 'type' ('Reader' or 'Target')
-            Edge Attributes: 'relation', 'score', 'source_doc', 'evidence', 'dataType'
+            Edge Attributes: 'relation', 'score', 'source_doc', 'evidence', 'worker', 'dataType'
             Output Rules: Return ONLY JSON with a "selector" key. No markdown blocks.
         `;
 
